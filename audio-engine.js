@@ -296,7 +296,8 @@ class EnvironmentalAudioEngine {
         const elevationFactor = (elevationNorm + 20) / 90; // 0 to 1
         
         // INVERTED: high elevation = low freq
-        this.fundamentalFreq = 4800 - (elevationFactor * 4600); // 4800 to 200
+        // Two octaves down: 1200Hz to 50Hz (was 4800 to 200)
+        this.fundamentalFreq = 1200 - (elevationFactor * 1150); // 1200 to 50
         
         // Temperature drift (hotter = more drift)
         const tempDrift = (this.temperature - 20) * 0.5; // ±10Hz per 20°C deviation
@@ -306,7 +307,7 @@ class EnvironmentalAudioEngine {
         const compassChord = this.getCompassChord();
         
         // Determine if we use multipliers (low fund) or divisors (high fund)
-        const useSubharmonics = this.fundamentalFreq > 2000;
+        const useSubharmonics = this.fundamentalFreq > 500; // Adjusted threshold
         
         // Set fundamental (oscillator 0) - always the root
         const fund = this.fundamentalFreq + randomDrift;
@@ -334,9 +335,9 @@ class EnvironmentalAudioEngine {
         });
         
         // Oscillator 3: Direct speed control (independent of fundamental)
-        // Slow (0 m/s) = 100Hz, Fast (35.8 m/s / 80 mph) = 2000Hz
+        // One octave down: 50Hz to 1000Hz (was 100Hz to 2000Hz)
         const speedNorm = Math.min(this.speed / 35.8, 1);
-        const speedFreq = 100 + (speedNorm * 1900);
+        const speedFreq = 50 + (speedNorm * 950);
         this.setOscillatorFrequency(3, speedFreq);
         
         // Update vibrato/tremolo based on speed (INVERTED)
@@ -373,55 +374,101 @@ class EnvironmentalAudioEngine {
     }
     
     getCompassChord() {
-        // Map compass heading (0-360°) to chord structures
-        // North (0°) = Major chord [1.0, 1.25, 1.5]
-        // East (90°) = Major 3rd chord [1.0, 1.25, 1.5625]
-        // South (180°) = Minor chord [1.0, 1.2, 1.5]
-        // West (270°) = Dominant 7th chord [1.0, 1.25, 1.5, 1.75]
+        // Arnold Dreyblatt's 20-tone microtonal scale
+        // Based on harmonics 8-27 of the overtone series
+        // Ratios: 8:8 through 27:8
+        const dreyblattScale = [
+            1.0,    // 8:8
+            1.125,  // 9:8
+            1.25,   // 10:8
+            1.375,  // 11:8
+            1.5,    // 12:8
+            1.625,  // 13:8
+            1.75,   // 14:8
+            1.875,  // 15:8
+            2.0,    // 16:8
+            2.125,  // 17:8
+            2.25,   // 18:8
+            2.375,  // 19:8
+            2.5,    // 20:8
+            2.625,  // 21:8
+            2.75,   // 22:8
+            2.875,  // 23:8
+            3.0,    // 24:8
+            3.125,  // 25:8
+            3.25,   // 26:8
+            3.375   // 27:8
+        ];
         
+        // Map compass heading (0-360°) to select 6 tones from the 20-tone scale
+        // Different cardinal directions emphasize different regions of the scale
         const headingNorm = this.heading % 360;
         
-        // Define chord structures (ratios from root)
-        const northChord = [1.0, 1.25, 1.5];           // Major: root, maj3, p5
-        const eastChord = [1.0, 1.25, 1.5625];         // Major 3rd: root, maj3, maj6
-        const southChord = [1.0, 1.2, 1.5];            // Minor: root, min3, p5
-        const westChord = [1.0, 1.25, 1.5, 1.75];      // Dom7: root, maj3, p5, min7
-        
-        let chord;
+        let selectedTones = [];
         
         if (headingNorm < 90) {
-            // North to East (0° to 90°): Major → Major 3rd
+            // North (0-90°): Lower harmonics (indices 0-9)
+            // Interpolate between starting positions in the scale
             const t = headingNorm / 90;
-            chord = this.interpolateChords(northChord, eastChord, t);
+            const startIdx = Math.floor(t * 4); // 0-4
+            selectedTones = [
+                dreyblattScale[startIdx],
+                dreyblattScale[startIdx + 2],
+                dreyblattScale[startIdx + 4],
+                dreyblattScale[startIdx + 6],
+                dreyblattScale[startIdx + 8],
+                dreyblattScale[Math.min(startIdx + 10, 19)]
+            ];
         } else if (headingNorm < 180) {
-            // East to South (90° to 180°): Major 3rd → Minor
+            // East (90-180°): Mid-range harmonics (indices 5-14)
             const t = (headingNorm - 90) / 90;
-            chord = this.interpolateChords(eastChord, southChord, t);
+            const startIdx = 5 + Math.floor(t * 5);
+            selectedTones = [
+                dreyblattScale[startIdx],
+                dreyblattScale[startIdx + 1],
+                dreyblattScale[startIdx + 3],
+                dreyblattScale[startIdx + 5],
+                dreyblattScale[Math.min(startIdx + 7, 19)],
+                dreyblattScale[Math.min(startIdx + 9, 19)]
+            ];
         } else if (headingNorm < 270) {
-            // South to West (180° to 270°): Minor → Dom7
+            // South (180-270°): Upper harmonics (indices 10-19)
             const t = (headingNorm - 180) / 90;
-            chord = this.interpolateChords(southChord, westChord, t);
+            const startIdx = 10 + Math.floor(t * 6);
+            selectedTones = [
+                dreyblattScale[Math.min(startIdx, 19)],
+                dreyblattScale[Math.min(startIdx + 2, 19)],
+                dreyblattScale[Math.min(startIdx + 4, 19)],
+                dreyblattScale[Math.min(startIdx + 6, 19)],
+                dreyblattScale[Math.min(startIdx + 8, 19)],
+                dreyblattScale[19]
+            ];
         } else {
-            // West to North (270° to 360°): Dom7 → Major
+            // West (270-360°): Distributed across full range
             const t = (headingNorm - 270) / 90;
-            chord = this.interpolateChords(westChord, northChord, t);
+            const spread = Math.floor(t * 3);
+            selectedTones = [
+                dreyblattScale[0 + spread],
+                dreyblattScale[4 + spread],
+                dreyblattScale[8 + spread],
+                dreyblattScale[12 + spread],
+                dreyblattScale[Math.min(16 + spread, 19)],
+                dreyblattScale[19]
+            ];
         }
         
-        return chord;
+        return selectedTones;
     }
     
     interpolateChords(chord1, chord2, t) {
-        // Interpolate between two chords
-        // Handle different chord lengths by padding with octaves
+        // No longer needed with Dreyblatt scale, but keeping for compatibility
         const maxLen = Math.max(chord1.length, chord2.length);
         const c1 = [...chord1];
         const c2 = [...chord2];
         
-        // Pad shorter chord with octave doublings
         while (c1.length < maxLen) c1.push(c1[c1.length - 1] * 2);
         while (c2.length < maxLen) c2.push(c2[c2.length - 1] * 2);
         
-        // Linear interpolation between ratios
         return c1.map((val, i) => val + (c2[i] - val) * t);
     }
     
