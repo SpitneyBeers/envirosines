@@ -341,8 +341,12 @@ class EnvironmentalAudioEngine {
         const elevationFactor = (elevationNorm + 20) / 90; // 0 to 1
         
         // INVERTED: high elevation = low freq
-        // Two octaves down: 1200Hz to 50Hz (was 4800 to 200)
-        this.fundamentalFreq = 1200 - (elevationFactor * 1150); // 1200 to 50
+        // Percussive mode: wider range for more extreme frequencies
+        if (this.mode === 'percussive') {
+            this.fundamentalFreq = 2400 - (elevationFactor * 2375); // 2400 to 25Hz
+        } else {
+            this.fundamentalFreq = 1200 - (elevationFactor * 1150); // 1200 to 50Hz
+        }
         
         // Temperature drift (hotter = more drift)
         const tempDrift = (this.temperature - 20) * 0.5; // ±10Hz per 20°C deviation
@@ -352,7 +356,7 @@ class EnvironmentalAudioEngine {
         const compassChord = this.getCompassChord();
         
         // Determine if we use multipliers (low fund) or divisors (high fund)
-        const useSubharmonics = this.fundamentalFreq > 500; // Adjusted threshold
+        const useSubharmonics = this.fundamentalFreq > 1000; // Adjusted threshold
         
         // Set fundamental (oscillator 0) - always the root
         const fund = this.fundamentalFreq + randomDrift;
@@ -376,13 +380,37 @@ class EnvironmentalAudioEngine {
                 harmonic = fund * chordTone * octaveMultiplier;
             }
             
+            // In percussive mode, shift octaves to avoid mid-range
+            if (this.mode === 'percussive') {
+                // Lower oscillators (1, 2) go down an octave
+                if (oscIdx <= 2) {
+                    harmonic = harmonic * 0.5;
+                }
+                // Higher oscillators (5, 6, 7) go up an octave
+                else if (oscIdx >= 5) {
+                    harmonic = harmonic * 2.0;
+                }
+                // Middle oscillator (4) stays same
+            }
+            
             this.setOscillatorFrequency(oscIdx, harmonic);
         });
         
         // Oscillator 3: Direct speed control (independent of fundamental)
         // One octave down: 50Hz to 1000Hz (was 100Hz to 2000Hz)
         const speedNorm = Math.min(this.speed / 35.8, 1);
-        const speedFreq = 50 + (speedNorm * 950);
+        let speedFreq = 50 + (speedNorm * 950);
+        
+        // In percussive mode, shift based on speed
+        // Slow = lower (×0.5), Fast = higher (×2.0)
+        if (this.mode === 'percussive') {
+            if (speedNorm < 0.5) {
+                speedFreq = speedFreq * 0.5; // Lower for slow speeds
+            } else {
+                speedFreq = speedFreq * 2.0; // Higher for fast speeds
+            }
+        }
+        
         this.setOscillatorFrequency(3, speedFreq);
         
         // Update vibrato/tremolo based on speed (INVERTED)
