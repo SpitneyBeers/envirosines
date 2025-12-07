@@ -3,6 +3,7 @@ class EnvironmentalAudioEngine {
         this.audioContext = null;
         this.oscillators = [];
         this.gainNodes = [];
+        this.panners = []; // Stereo panners for each oscillator
         this.convolver = null;
         this.masterGain = null;
         this.dryGain = null;
@@ -10,6 +11,9 @@ class EnvironmentalAudioEngine {
         this.lowPassFilter = null;
         this.highPassFilter = null;
         this.isRunning = false;
+        
+        // Playback mode: 'drone' or 'percussive'
+        this.mode = 'drone';
         
         // Fundamental frequency based on sun position
         this.fundamentalFreq = 200;
@@ -85,6 +89,10 @@ class EnvironmentalAudioEngine {
         for (let i = 0; i < 8; i++) {
             const oscillator = this.audioContext.createOscillator();
             const gainNode = this.audioContext.createGain();
+            const panner = this.audioContext.createStereoPanner();
+            
+            // Initialize panner (will be controlled by compass)
+            panner.pan.value = 0; // Center
             
             // Create vibrato LFO for each oscillator
             const lfo = this.audioContext.createOscillator();
@@ -104,23 +112,26 @@ class EnvironmentalAudioEngine {
             // Start at 0 volume (sporadic)
             gainNode.gain.value = 0;
             
+            // Audio chain: oscillator -> gain -> panner -> filters/reverb
             oscillator.connect(gainNode);
+            gainNode.connect(panner);
             
             // Fundamental (osc 0) goes through filters, harmonics bypass filters
             if (i === 0) {
-                gainNode.connect(this.highPassFilter);
+                panner.connect(this.highPassFilter);
                 this.highPassFilter.connect(this.lowPassFilter);
                 this.lowPassFilter.connect(this.dryGain);
                 this.lowPassFilter.connect(this.wetGain);
             } else {
-                gainNode.connect(this.dryGain);
-                gainNode.connect(this.wetGain);
+                panner.connect(this.dryGain);
+                panner.connect(this.wetGain);
             }
             
             oscillator.start();
             
             this.oscillators.push(oscillator);
             this.gainNodes.push(gainNode);
+            this.panners.push(panner);
         }
         
         this.isRunning = true;
@@ -155,38 +166,68 @@ class EnvironmentalAudioEngine {
         }
     }
     
+    setMode(mode) {
+        // Switch between 'drone' and 'percussive' modes
+        this.mode = mode;
+        
+        // Restart all timers with new timing
+        this.sporadicTimers.forEach(timer => clearTimeout(timer));
+        this.sporadicTimers = [];
+        
+        for (let i = 0; i < 8; i++) {
+            this.scheduleSporadicPulse(i);
+        }
+    }
+    
     scheduleSporadicPulse(oscIndex) {
         // Speed-dependent timing for oscillators 4-7
         const isSpeedControlled = oscIndex >= 4;
         
-        let interval, duration;
+        let interval, duration, fadeIn, fadeOut;
         
-        if (isSpeedControlled) {
-            // Speed affects pulse frequency
-            // Slow (0 m/s) = 8-16 sec intervals (infrequent)
-            // Fast (35.8 m/s / 80 mph) = 1-4 sec intervals (rapid)
-            const speedNorm = Math.min(this.speed / 35.8, 1);
-            const minInterval = 8000 - (speedNorm * 7000); // 8s to 1s
-            const maxInterval = 16000 - (speedNorm * 12000); // 16s to 4s
-            interval = minInterval + Math.random() * (maxInterval - minInterval);
+        if (this.mode === 'percussive') {
+            // PERCUSSIVE MODE: Short, sharp bursts
+            duration = 50 + Math.random() * 250; // 50-300ms
+            fadeIn = 10 + Math.random() * 40; // 10-50ms attack
+            fadeOut = 10 + Math.random() * 40; // 10-50ms release
+            
+            if (isSpeedControlled) {
+                // Speed affects pulse density
+                const speedNorm = Math.min(this.speed / 35.8, 1);
+                const minInterval = 500 - (speedNorm * 300); // 500ms to 200ms
+                const maxInterval = 2000 - (speedNorm * 1000); // 2s to 1s
+                interval = minInterval + Math.random() * (maxInterval - minInterval);
+            } else {
+                interval = 200 + Math.random() * 1800; // 200ms-2s
+            }
         } else {
-            // Fixed timing for oscillators 0-3
-            interval = 3000 + Math.random() * 13000; // 3-16 seconds
+            // DRONE MODE: Longer, sustained tones (original behavior)
+            duration = 1000 + Math.random() * 5000; // 1-6 seconds
+            fadeIn = 0.2 + Math.random() * 0.5; // 0.2-0.7s
+            fadeOut = 0.3 + Math.random() * 1.0; // 0.3-1.3s
+            
+            if (isSpeedControlled) {
+                const speedNorm = Math.min(this.speed / 35.8, 1);
+                const minInterval = 8000 - (speedNorm * 7000); // 8s to 1s
+                const maxInterval = 16000 - (speedNorm * 12000); // 16s to 4s
+                interval = minInterval + Math.random() * (maxInterval - minInterval);
+            } else {
+                interval = 3000 + Math.random() * 13000; // 3-16 seconds
+            }
         }
-        
-        duration = 1000 + Math.random() * 5000; // 1-6 seconds (same for all)
-        
-        const fadeIn = 0.2 + Math.random() * 0.5; // 0.2-0.7s fade in
-        const fadeOut = 0.3 + Math.random() * 1.0; // 0.3-1.3s fade out
         
         const timer = setTimeout(() => {
             if (!this.isRunning) return;
             
-            this.fadeIn(oscIndex, fadeIn, 0.04); // Volume 0.04 per oscillator
+            // Convert ms to seconds for drone mode fade times
+            const fadeInSec = this.mode === 'percussive' ? fadeIn / 1000 : fadeIn;
+            const fadeOutSec = this.mode === 'percussive' ? fadeOut / 1000 : fadeOut;
+            
+            this.fadeIn(oscIndex, fadeInSec, 0.04);
             
             setTimeout(() => {
                 if (!this.isRunning) return;
-                this.fadeOut(oscIndex, fadeOut);
+                this.fadeOut(oscIndex, fadeOutSec);
                 
                 // Schedule next pulse
                 this.scheduleSporadicPulse(oscIndex);
@@ -242,6 +283,7 @@ class EnvironmentalAudioEngine {
         
         this.oscillators = [];
         this.gainNodes = [];
+        this.panners = [];
         this.convolver = null;
         this.masterGain = null;
         this.dryGain = null;
@@ -365,6 +407,20 @@ class EnvironmentalAudioEngine {
         const humidityNorm = this.humidity / 100; // 0 to 1
         this.dryGain.gain.value = 0.9 - (humidityNorm * 0.5); // 0.9 to 0.4
         this.wetGain.gain.value = 0.1 + (humidityNorm * 0.6); // 0.1 to 0.7
+        
+        // Update stereo panning based on compass heading
+        // Map heading to pan position, avoiding hard left/right
+        // 0° (North) = center, 90° (East) = right, 180° (South) = center, 270° (West) = left
+        const headingRad = (this.heading * Math.PI) / 180;
+        const panPosition = Math.sin(headingRad) * 0.7; // ±0.7 max (avoiding ±1.0)
+        
+        // Apply panning to all oscillators with slight variations
+        this.panners.forEach((panner, i) => {
+            // Each oscillator gets slightly offset pan for stereo width
+            const offset = (i - 3.5) * 0.05; // -0.175 to +0.175
+            const finalPan = Math.max(-0.8, Math.min(0.8, panPosition + offset));
+            panner.pan.value = finalPan;
+        });
         
         // Notify UI
         if (this.onFrequencyUpdate) {
