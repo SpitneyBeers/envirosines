@@ -130,6 +130,12 @@ h2 {
     margin-top: 10px;
 }
 
+.btn-mode {
+    background: #a50;
+    color: #fff;
+    margin-top: 10px;
+}
+
 .btn:active {
     transform: scale(0.98);
 }

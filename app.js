@@ -24,6 +24,7 @@ let currentData = {
 // DOM elements
 const toggleBtn = document.getElementById('toggleBtn');
 const compassBtn = document.getElementById('compassBtn');
+const modeBtn = document.getElementById('modeBtn');
 const statusEl = document.getElementById('status');
 const latEl = document.getElementById('lat');
 const lonEl = document.getElementById('lon');
@@ -36,6 +37,7 @@ const timeEl = document.getElementById('time');
 // Initialize
 toggleBtn.addEventListener('click', toggleAudio);
 compassBtn.addEventListener('click', enableCompass);
+modeBtn.addEventListener('click', toggleMode);
 
 audioEngine.onFrequencyUpdate = (frequencies) => {
     frequencies.forEach((freq, i) => {
@@ -96,6 +98,9 @@ async function startAudio() {
             headingEl.textContent = 'Not supported';
         }
         
+        // Show mode toggle button
+        modeBtn.style.display = 'block';
+        
         // Update UI
         toggleBtn.textContent = 'Stop';
         toggleBtn.classList.remove('btn-start');
@@ -150,7 +155,24 @@ function stopAudio() {
     compassBtn.disabled = false;
     compassBtn.style.background = '#05a';
     
+    // Hide mode button
+    modeBtn.style.display = 'none';
+    modeBtn.textContent = 'Mode: Drone';
+    
     isRunning = false;
+}
+
+function toggleMode() {
+    const currentMode = audioEngine.mode;
+    const newMode = currentMode === 'drone' ? 'percussive' : 'drone';
+    
+    audioEngine.setMode(newMode);
+    
+    // Update button text
+    modeBtn.textContent = newMode === 'drone' ? 'Mode: Drone' : 'Mode: Percussive';
+    
+    // Optional: visual feedback
+    modeBtn.style.background = newMode === 'drone' ? '#a50' : '#0a5';
 }
 
 function onLocationUpdate(position) {
