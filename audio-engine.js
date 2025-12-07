@@ -194,11 +194,11 @@ class EnvironmentalAudioEngine {
             if (isSpeedControlled) {
                 // Speed affects pulse density
                 const speedNorm = Math.min(this.speed / 35.8, 1);
-                const minInterval = 500 - (speedNorm * 300); // 500ms to 200ms
-                const maxInterval = 2000 - (speedNorm * 1000); // 2s to 1s
+                const minInterval = 1500 - (speedNorm * 500); // 1.5s to 1s
+                const maxInterval = 5000 - (speedNorm * 2000); // 5s to 3s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
-                interval = 200 + Math.random() * 1800; // 200ms-2s
+                interval = 1000 + Math.random() * 4000; // 1s-5s (was 200ms-2s)
             }
         } else {
             // DRONE MODE: Longer, sustained tones (original behavior)
@@ -223,7 +223,10 @@ class EnvironmentalAudioEngine {
             const fadeInSec = this.mode === 'percussive' ? fadeIn / 1000 : fadeIn;
             const fadeOutSec = this.mode === 'percussive' ? fadeOut / 1000 : fadeOut;
             
-            this.fadeIn(oscIndex, fadeInSec, 0.04);
+            // Lower volume in percussive mode to prevent clipping from sharp attacks
+            const targetVolume = this.mode === 'percussive' ? 0.02 : 0.04;
+            
+            this.fadeIn(oscIndex, fadeInSec, targetVolume);
             
             setTimeout(() => {
                 if (!this.isRunning) return;
