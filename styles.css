@@ -136,6 +136,47 @@ h2 {
     margin-top: 10px;
 }
 
+.btn-waveform {
+    background: #50a;
+    color: #fff;
+    margin-top: 10px;
+}
+
+.scale-selector {
+    margin-top: 15px;
+    padding: 15px;
+    background: #111;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.scale-selector label {
+    color: #888;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.scale-select {
+    flex: 1;
+    padding: 10px 15px;
+    background: #222;
+    color: #fff;
+    border: 1px solid #444;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.scale-select:focus {
+    outline: none;
+    border-color: #50a;
+}
+
 .btn:active {
     transform: scale(0.98);
 }

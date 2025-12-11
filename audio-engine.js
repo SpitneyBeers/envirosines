@@ -15,6 +15,12 @@ class EnvironmentalAudioEngine {
         // Playback mode: 'drone' or 'percussive'
         this.mode = 'drone';
         
+        // Waveform type: 'sine', 'triangle', 'sawtooth'
+        this.waveform = 'sine';
+        
+        // Scale type: 'dreyblatt', 'partch', 'harmonic', 'slendro', 'just', 'quartertone', 'yo'
+        this.scale = 'dreyblatt';
+        
         // Fundamental frequency based on sun position
         this.fundamentalFreq = 200;
         
@@ -106,7 +112,7 @@ class EnvironmentalAudioEngine {
             
             this.vibratoLFOs.push({ lfo, lfoGain });
             
-            oscillator.type = 'sine';
+            oscillator.type = this.waveform; // Use selected waveform
             oscillator.frequency.value = 200;
             
             // Start at 0 volume (sporadic)
@@ -177,6 +183,24 @@ class EnvironmentalAudioEngine {
         for (let i = 0; i < 8; i++) {
             this.scheduleSporadicPulse(i);
         }
+    }
+    
+    setWaveform(waveform) {
+        // Switch between 'sine', 'triangle', 'sawtooth'
+        this.waveform = waveform;
+        
+        // Update all oscillator types
+        this.oscillators.forEach(osc => {
+            osc.type = waveform;
+        });
+    }
+    
+    setScale(scale) {
+        // Switch between different tuning systems
+        this.scale = scale;
+        
+        // Update frequencies with new scale
+        this.updateFrequencies();
     }
     
     scheduleSporadicPulse(oscIndex) {
@@ -262,18 +286,32 @@ class EnvironmentalAudioEngine {
         if (!this.isRunning || !this.gainNodes[oscIndex]) return;
         const now = this.audioContext.currentTime;
         const gainNode = this.gainNodes[oscIndex];
+        
+        // Add slight irregularity to attack timing for organic feel
+        const irregularity = (Math.random() - 0.5) * 0.02; // ±10ms variation
+        const organicDuration = Math.max(0.01, duration + irregularity);
+        
+        // Add gentle amplitude flutter (subtle random modulation)
+        const flutter = (Math.random() - 0.5) * 0.005; // ±0.5% volume variation
+        const organicVolume = targetVolume * (1 + flutter);
+        
         gainNode.gain.cancelScheduledValues(now);
         gainNode.gain.setValueAtTime(0, now);
-        gainNode.gain.linearRampToValueAtTime(targetVolume, now + duration);
+        gainNode.gain.linearRampToValueAtTime(organicVolume, now + organicDuration);
     }
     
     fadeOut(oscIndex, duration) {
         if (!this.isRunning || !this.gainNodes[oscIndex]) return;
         const now = this.audioContext.currentTime;
         const gainNode = this.gainNodes[oscIndex];
+        
+        // Add slight irregularity to release
+        const irregularity = (Math.random() - 0.5) * 0.02;
+        const organicDuration = Math.max(0.01, duration + irregularity);
+        
         gainNode.gain.cancelScheduledValues(now);
         gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-        gainNode.gain.linearRampToValueAtTime(0, now + duration);
+        gainNode.gain.linearRampToValueAtTime(0, now + organicDuration);
     }
     
     stop() {
@@ -371,8 +409,8 @@ class EnvironmentalAudioEngine {
         const tempDrift = (this.temperature - 20) * 0.5; // ±10Hz per 20°C deviation
         const randomDrift = (Math.random() - 0.5) * Math.abs(tempDrift);
         
-        // Get compass chord (3-4 ratios depending on direction)
-        const compassChord = this.getCompassChord();
+        // Get scale tones based on compass and selected scale
+        const compassTones = this.getScaleTones();
         
         // Determine if we use multipliers (low fund) or divisors (high fund)
         const useSubharmonics = this.fundamentalFreq > 1000; // Adjusted threshold
@@ -386,17 +424,17 @@ class EnvironmentalAudioEngine {
         const harmonicIndices = [1, 2, 4, 5, 6, 7];
         
         harmonicIndices.forEach((oscIdx, i) => {
-            // Cycle through chord tones, doubling at octaves
-            const chordTone = compassChord[i % compassChord.length];
-            const octaveMultiplier = Math.floor(i / compassChord.length) + 1;
+            // Cycle through scale tones, doubling at octaves
+            const tone = compassTones[i % compassTones.length];
+            const octaveMultiplier = Math.floor(i / compassTones.length) + 1;
             
             let harmonic;
             if (useSubharmonics) {
                 // High fundamental: use subharmonics (divide)
-                harmonic = fund / (chordTone * octaveMultiplier);
+                harmonic = fund / (tone * octaveMultiplier);
             } else {
                 // Low fundamental: use harmonics (multiply)
-                harmonic = fund * chordTone * octaveMultiplier;
+                harmonic = fund * tone * octaveMultiplier;
             }
             
             // In percussive mode, shift octaves more extremely to widen frequency spread
@@ -479,7 +517,132 @@ class EnvironmentalAudioEngine {
         }
     }
     
-    getCompassChord() {
+    getScaleTones() {
+        // Returns 6 tones from the selected scale based on compass heading
+        const headingNorm = this.heading % 360;
+        
+        let scaleRatios;
+        
+        switch(this.scale) {
+            case 'dreyblatt':
+                // Arnold Dreyblatt's 20-tone scale (harmonics 8-27)
+                scaleRatios = [
+                    1.0, 1.125, 1.25, 1.375, 1.5, 1.625, 1.75, 1.875, 2.0, 2.125,
+                    2.25, 2.375, 2.5, 2.625, 2.75, 2.875, 3.0, 3.125, 3.25, 3.375
+                ];
+                break;
+                
+            case 'partch':
+                // Harry Partch's 43-tone just intonation (subset of key ratios)
+                scaleRatios = [
+                    1.0, 1.0125, 1.125, 1.25, 1.3333, 1.5, 1.6, 1.6875, 1.75, 1.875,
+                    2.0, 2.25, 2.5, 2.6667, 3.0, 3.2, 3.375, 3.5, 3.75, 4.0
+                ];
+                break;
+                
+            case 'harmonic':
+                // Pure harmonic series (Grisey-style, harmonics 1-20)
+                scaleRatios = [
+                    1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
+                    11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0
+                ];
+                break;
+                
+            case 'slendro':
+                // Indonesian Slendro (5-tone gamelan scale, octave-repeating)
+                const slendroBase = [1.0, 1.2, 1.4, 1.68, 1.87]; // Approximate ratios
+                scaleRatios = [
+                    ...slendroBase,
+                    ...slendroBase.map(r => r * 2),
+                    ...slendroBase.map(r => r * 3),
+                    ...slendroBase.map(r => r * 4)
+                ];
+                break;
+                
+            case 'just':
+                // Classic Just Intonation (major scale ratios)
+                const justBase = [1.0, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875]; // 9/8, 5/4, 4/3, 3/2, 5/3, 15/8
+                scaleRatios = [
+                    ...justBase,
+                    ...justBase.map(r => r * 2),
+                    ...justBase.map(r => r * 3)
+                ];
+                break;
+                
+            case 'quartertone':
+                // 24-EDO (quarter-tone system)
+                scaleRatios = Array.from({length: 24}, (_, i) => 
+                    Math.pow(2, i / 24) // 2^(n/24) for equal divisions
+                );
+                break;
+                
+            case 'yo':
+                // Japanese Yo scale (pentatonic used in Gagaku)
+                // Ratios approximate traditional tuning
+                const yoBase = [1.0, 1.125, 1.333, 1.5, 1.6875]; // Roughly C D F G A
+                scaleRatios = [
+                    ...yoBase,
+                    ...yoBase.map(r => r * 2),
+                    ...yoBase.map(r => r * 3),
+                    ...yoBase.map(r => r * 4)
+                ];
+                break;
+                
+            default:
+                scaleRatios = [1.0, 1.125, 1.25, 1.5, 1.75, 2.0]; // Fallback
+        }
+        
+        // Select 6 tones from the scale based on compass heading (same logic as before)
+        let selectedTones = [];
+        
+        if (headingNorm < 90) {
+            const t = headingNorm / 90;
+            const startIdx = Math.floor(t * Math.min(4, scaleRatios.length - 10));
+            selectedTones = [
+                scaleRatios[startIdx],
+                scaleRatios[Math.min(startIdx + 2, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 4, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 6, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 8, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 10, scaleRatios.length - 1)]
+            ];
+        } else if (headingNorm < 180) {
+            const t = (headingNorm - 90) / 90;
+            const startIdx = Math.floor(5 + t * Math.min(5, scaleRatios.length - 15));
+            selectedTones = [
+                scaleRatios[Math.min(startIdx, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 1, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 3, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 5, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 7, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 9, scaleRatios.length - 1)]
+            ];
+        } else if (headingNorm < 270) {
+            const t = (headingNorm - 180) / 90;
+            const startIdx = Math.floor(10 + t * Math.min(6, scaleRatios.length - 16));
+            selectedTones = [
+                scaleRatios[Math.min(startIdx, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 2, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 4, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 6, scaleRatios.length - 1)],
+                scaleRatios[Math.min(startIdx + 8, scaleRatios.length - 1)],
+                scaleRatios[scaleRatios.length - 1]
+            ];
+        } else {
+            const t = (headingNorm - 270) / 90;
+            const spread = Math.floor(t * 3);
+            selectedTones = [
+                scaleRatios[Math.min(0 + spread, scaleRatios.length - 1)],
+                scaleRatios[Math.min(4 + spread, scaleRatios.length - 1)],
+                scaleRatios[Math.min(8 + spread, scaleRatios.length - 1)],
+                scaleRatios[Math.min(12 + spread, scaleRatios.length - 1)],
+                scaleRatios[Math.min(16 + spread, scaleRatios.length - 1)],
+                scaleRatios[scaleRatios.length - 1]
+            ];
+        }
+        
+        return selectedTones;
+    }
         // Arnold Dreyblatt's 20-tone microtonal scale
         // Based on harmonics 8-27 of the overtone series
         // Ratios: 8:8 through 27:8
@@ -584,10 +747,14 @@ class EnvironmentalAudioEngine {
         const now = this.audioContext.currentTime;
         const osc = this.oscillators[index];
         
+        // Add subtle pitch instability for organic sound (±0.3Hz random drift)
+        const pitchDrift = (Math.random() - 0.5) * 0.6;
+        const organicFreq = frequency + pitchDrift;
+        
         osc.frequency.cancelScheduledValues(now);
         osc.frequency.setValueAtTime(osc.frequency.value, now);
         osc.frequency.exponentialRampToValueAtTime(
-            Math.max(20, Math.min(20000, frequency)),
+            Math.max(20, Math.min(20000, organicFreq)),
             now + 0.1
         );
     }

@@ -25,6 +25,9 @@ let currentData = {
 const toggleBtn = document.getElementById('toggleBtn');
 const compassBtn = document.getElementById('compassBtn');
 const modeBtn = document.getElementById('modeBtn');
+const waveformBtn = document.getElementById('waveformBtn');
+const scaleSelector = document.getElementById('scaleSelector');
+const scaleSelect = document.getElementById('scaleSelect');
 const statusEl = document.getElementById('status');
 const latEl = document.getElementById('lat');
 const lonEl = document.getElementById('lon');
@@ -38,6 +41,8 @@ const timeEl = document.getElementById('time');
 toggleBtn.addEventListener('click', toggleAudio);
 compassBtn.addEventListener('click', enableCompass);
 modeBtn.addEventListener('click', toggleMode);
+waveformBtn.addEventListener('click', toggleWaveform);
+scaleSelect.addEventListener('change', changeScale);
 
 audioEngine.onFrequencyUpdate = (frequencies) => {
     frequencies.forEach((freq, i) => {
@@ -101,6 +106,12 @@ async function startAudio() {
         // Show mode toggle button
         modeBtn.style.display = 'block';
         
+        // Show waveform toggle button
+        waveformBtn.style.display = 'block';
+        
+        // Show scale selector
+        scaleSelector.style.display = 'flex';
+        
         // Update UI
         toggleBtn.textContent = 'Stop';
         toggleBtn.classList.remove('btn-start');
@@ -159,6 +170,14 @@ function stopAudio() {
     modeBtn.style.display = 'none';
     modeBtn.textContent = 'Mode: Drone';
     
+    // Hide waveform button
+    waveformBtn.style.display = 'none';
+    waveformBtn.textContent = 'Wave: Sine';
+    
+    // Hide scale selector
+    scaleSelector.style.display = 'none';
+    scaleSelect.value = 'dreyblatt';
+    
     isRunning = false;
 }
 
@@ -173,6 +192,24 @@ function toggleMode() {
     
     // Optional: visual feedback
     modeBtn.style.background = newMode === 'drone' ? '#a50' : '#0a5';
+}
+
+function toggleWaveform() {
+    const waveforms = ['sine', 'triangle', 'sawtooth'];
+    const currentIndex = waveforms.indexOf(audioEngine.waveform);
+    const nextIndex = (currentIndex + 1) % waveforms.length;
+    const newWaveform = waveforms[nextIndex];
+    
+    audioEngine.setWaveform(newWaveform);
+    
+    // Update button text with capitalized name
+    const displayName = newWaveform.charAt(0).toUpperCase() + newWaveform.slice(1);
+    waveformBtn.textContent = `Wave: ${displayName}`;
+}
+
+function changeScale() {
+    const newScale = scaleSelect.value;
+    audioEngine.setScale(newScale);
 }
 
 function onLocationUpdate(position) {
