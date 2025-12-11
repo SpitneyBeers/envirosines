@@ -268,11 +268,13 @@ class EnvironmentalAudioEngine {
                 targetVolume *= 1.3; // Boost bass by 30%
             }
             
-            // In drone mode, reduce volume of higher oscillators to soften treble
-            if (this.mode === 'drone' && oscIndex >= 5) {
-                targetVolume *= 0.4; // Reduce high frequencies by 60% (was 40%)
-            } else if (this.mode === 'drone' && oscIndex === 4) {
-                targetVolume *= 0.7; // Reduce mid-high by 30%
+            // In drone mode, reduce mid-range but keep ultra-highs audible
+            if (this.mode === 'drone' && oscIndex === 4) {
+                targetVolume *= 0.5; // Cut mid-range significantly
+            } else if (this.mode === 'drone' && oscIndex === 5) {
+                targetVolume *= 0.5; // Reduce high-mid
+            } else if (this.mode === 'drone' && (oscIndex === 6 || oscIndex === 7)) {
+                targetVolume *= 0.6; // Keep ultra-highs more present (was 0.4)
             }
             
             this.fadeIn(oscIndex, fadeInSec, targetVolume);
@@ -455,6 +457,15 @@ class EnvironmentalAudioEngine {
                     harmonic = harmonic * 4.0;
                 }
                 // Middle oscillator (4) stays same
+            } else {
+                // Drone mode: spread spectrum more - deep bass AND high shimmer
+                if (oscIdx === 1 || oscIdx === 2) {
+                    harmonic = harmonic * 0.5; // Bass region
+                } else if (oscIdx === 6 || oscIdx === 7) {
+                    harmonic = harmonic * 8.0; // Ultra high shimmer (3 octaves up)
+                } else if (oscIdx === 5) {
+                    harmonic = harmonic * 4.0; // High (2 octaves up)
+                }
             }
             
             this.setOscillatorFrequency(oscIdx, harmonic);
