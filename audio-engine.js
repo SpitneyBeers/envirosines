@@ -182,31 +182,44 @@ class EnvironmentalAudioEngine {
     scheduleSporadicPulse(oscIndex) {
         // Speed-dependent timing for oscillators 4-7
         const isSpeedControlled = oscIndex >= 4;
+        const isSpeedOscillator = oscIndex === 3;
         
         let interval, duration, fadeIn, fadeOut;
         
         if (this.mode === 'percussive') {
-            // PERCUSSIVE MODE: Short, sharp bursts
+            // PERCUSSIVE MODE: Short, sharp bursts, slower rate
             duration = 50 + Math.random() * 250; // 50-300ms
-            fadeIn = 10 + Math.random() * 40; // 10-50ms attack
-            fadeOut = 10 + Math.random() * 40; // 10-50ms release
+            fadeIn = (20 + Math.random() * 60) / 1000; // 20-80ms attack (smoother to prevent clipping)
+            fadeOut = (10 + Math.random() * 40) / 1000; // 10-50ms release
             
-            if (isSpeedControlled) {
+            if (isSpeedOscillator) {
+                // Oscillator 3: VERY dramatic speed response
+                const speedNorm = Math.min(this.speed / 35.8, 1);
+                const minInterval = 10000 - (speedNorm * 9500); // 10s to 0.5s
+                const maxInterval = 20000 - (speedNorm * 19000); // 20s to 1s
+                interval = minInterval + Math.random() * (maxInterval - minInterval);
+            } else if (isSpeedControlled) {
                 // Speed affects pulse density
                 const speedNorm = Math.min(this.speed / 35.8, 1);
-                const minInterval = 1500 - (speedNorm * 500); // 1.5s to 1s
-                const maxInterval = 5000 - (speedNorm * 2000); // 5s to 3s
+                const minInterval = 3000 - (speedNorm * 1000); // 3s to 2s
+                const maxInterval = 8000 - (speedNorm * 3000); // 8s to 5s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
-                interval = 1000 + Math.random() * 4000; // 1s-5s (was 200ms-2s)
+                interval = 2000 + Math.random() * 6000; // 2s-8s
             }
         } else {
-            // DRONE MODE: Longer, sustained tones (original behavior)
+            // DRONE MODE: Longer, sustained tones
             duration = 1000 + Math.random() * 5000; // 1-6 seconds
             fadeIn = 0.2 + Math.random() * 0.5; // 0.2-0.7s
             fadeOut = 0.3 + Math.random() * 1.0; // 0.3-1.3s
             
-            if (isSpeedControlled) {
+            if (isSpeedOscillator) {
+                // Oscillator 3: dramatic speed response in drone mode too
+                const speedNorm = Math.min(this.speed / 35.8, 1);
+                const minInterval = 12000 - (speedNorm * 10000); // 12s to 2s
+                const maxInterval = 20000 - (speedNorm * 16000); // 20s to 4s
+                interval = minInterval + Math.random() * (maxInterval - minInterval);
+            } else if (isSpeedControlled) {
                 const speedNorm = Math.min(this.speed / 35.8, 1);
                 const minInterval = 8000 - (speedNorm * 7000); // 8s to 1s
                 const maxInterval = 16000 - (speedNorm * 12000); // 16s to 4s
@@ -220,11 +233,16 @@ class EnvironmentalAudioEngine {
             if (!this.isRunning) return;
             
             // Convert ms to seconds for drone mode fade times
-            const fadeInSec = this.mode === 'percussive' ? fadeIn / 1000 : fadeIn;
-            const fadeOutSec = this.mode === 'percussive' ? fadeOut / 1000 : fadeOut;
+            const fadeInSec = this.mode === 'percussive' ? fadeIn : fadeIn;
+            const fadeOutSec = this.mode === 'percussive' ? fadeOut : fadeOut;
             
-            // Lower volume in percussive mode to prevent clipping from sharp attacks
-            const targetVolume = this.mode === 'percussive' ? 0.02 : 0.04;
+            // Volume based on mode - higher for percussive now that attack is smoother
+            let targetVolume = this.mode === 'percussive' ? 0.035 : 0.04;
+            
+            // In drone mode, reduce volume of higher oscillators to soften treble
+            if (this.mode === 'drone' && oscIndex >= 5) {
+                targetVolume *= 0.6; // Reduce high frequencies by 40%
+            }
             
             this.fadeIn(oscIndex, fadeInSec, targetVolume);
             
@@ -341,11 +359,12 @@ class EnvironmentalAudioEngine {
         const elevationFactor = (elevationNorm + 20) / 90; // 0 to 1
         
         // INVERTED: high elevation = low freq
-        // Percussive mode: wider range for more extreme frequencies
+        // Percussive mode: much wider range for more frequency variation
+        // Drone mode: lower range for less treble
         if (this.mode === 'percussive') {
-            this.fundamentalFreq = 2400 - (elevationFactor * 2375); // 2400 to 25Hz
+            this.fundamentalFreq = 4800 - (elevationFactor * 4750); // 4800 to 50Hz (doubled range)
         } else {
-            this.fundamentalFreq = 1200 - (elevationFactor * 1150); // 1200 to 50Hz
+            this.fundamentalFreq = 800 - (elevationFactor * 750); // 800 to 50Hz (reduced from 1200)
         }
         
         // Temperature drift (hotter = more drift)
@@ -380,15 +399,15 @@ class EnvironmentalAudioEngine {
                 harmonic = fund * chordTone * octaveMultiplier;
             }
             
-            // In percussive mode, shift octaves to avoid mid-range
+            // In percussive mode, shift octaves more extremely to widen frequency spread
             if (this.mode === 'percussive') {
-                // Lower oscillators (1, 2) go down an octave
+                // Lower oscillators (1, 2) go down two octaves
                 if (oscIdx <= 2) {
-                    harmonic = harmonic * 0.5;
+                    harmonic = harmonic * 0.25;
                 }
-                // Higher oscillators (5, 6, 7) go up an octave
+                // Higher oscillators (5, 6, 7) go up two octaves
                 else if (oscIdx >= 5) {
-                    harmonic = harmonic * 2.0;
+                    harmonic = harmonic * 4.0;
                 }
                 // Middle oscillator (4) stays same
             }
@@ -401,13 +420,13 @@ class EnvironmentalAudioEngine {
         const speedNorm = Math.min(this.speed / 35.8, 1);
         let speedFreq = 50 + (speedNorm * 950);
         
-        // In percussive mode, shift based on speed
-        // Slow = lower (×0.5), Fast = higher (×2.0)
+        // In percussive mode, shift based on speed more extremely
+        // Slow = much lower (×0.25), Fast = much higher (×4.0)
         if (this.mode === 'percussive') {
             if (speedNorm < 0.5) {
-                speedFreq = speedFreq * 0.5; // Lower for slow speeds
+                speedFreq = speedFreq * 0.25; // Very low for slow speeds
             } else {
-                speedFreq = speedFreq * 2.0; // Higher for fast speeds
+                speedFreq = speedFreq * 4.0; // Very high for fast speeds
             }
         }
         
