@@ -69,8 +69,8 @@ class EnvironmentalAudioEngine {
         // Create dry/wet mix for reverb (controlled by humidity)
         this.dryGain = this.audioContext.createGain();
         this.wetGain = this.audioContext.createGain();
-        this.dryGain.gain.value = 0.7; // Default 70% dry
-        this.wetGain.gain.value = 0.3; // Default 30% wet
+        this.dryGain.gain.value = 0.85; // Increased dry from 70% to 85%
+        this.wetGain.gain.value = 0.15; // Reduced wet from 30% to 15% (more subtle)
         
         // Create filters for fundamental (controlled by lat/lon)
         this.lowPassFilter = this.audioContext.createBiquadFilter();
@@ -149,7 +149,7 @@ class EnvironmentalAudioEngine {
     
     createReverbImpulse() {
         const sampleRate = this.audioContext.sampleRate;
-        const length = sampleRate * 1.75; // Reduced from 3.5s to 1.75s (half)
+        const length = sampleRate * 0.875; // Reduced from 1.75s to 0.875s (tighter reverb)
         const impulse = this.audioContext.createBuffer(2, length, sampleRate);
         
         for (let channel = 0; channel < 2; channel++) {
@@ -539,10 +539,10 @@ class EnvironmentalAudioEngine {
         
         // Filters now controlled by sun position (see earlier in updateFrequencies)
         
-        // Update reverb wet/dry based on humidity
+        // Update reverb wet/dry based on humidity (more subtle now)
         const humidityNorm = this.humidity / 100; // 0 to 1
-        this.dryGain.gain.value = 0.9 - (humidityNorm * 0.5); // 0.9 to 0.4
-        this.wetGain.gain.value = 0.1 + (humidityNorm * 0.6); // 0.1 to 0.7
+        this.dryGain.gain.value = 0.95 - (humidityNorm * 0.25); // 0.95 to 0.7 (drier overall)
+        this.wetGain.gain.value = 0.05 + (humidityNorm * 0.30); // 0.05 to 0.35 (max wet halved from 0.7)
         
         // Update stereo panning based on compass heading
         // Map heading to pan position, avoiding hard left/right
@@ -710,8 +710,8 @@ class EnvironmentalAudioEngine {
         const now = this.audioContext.currentTime;
         const osc = this.oscillators[index];
         
-        // Add subtle pitch instability for organic sound (±0.3Hz random drift)
-        const pitchDrift = (Math.random() - 0.5) * 0.6;
+        // Add subtle pitch instability for organic sound (±0.15Hz random drift, reduced from 0.3Hz)
+        const pitchDrift = (Math.random() - 0.5) * 0.3;
         const organicFreq = frequency + pitchDrift;
         
         osc.frequency.cancelScheduledValues(now);
