@@ -263,9 +263,16 @@ class EnvironmentalAudioEngine {
             // Volume based on mode - higher for percussive now that attack is smoother
             let targetVolume = this.mode === 'percussive' ? 0.035 : 0.04;
             
+            // In drone mode, boost lower oscillators for bass presence
+            if (this.mode === 'drone' && oscIndex <= 2) {
+                targetVolume *= 1.3; // Boost bass by 30%
+            }
+            
             // In drone mode, reduce volume of higher oscillators to soften treble
             if (this.mode === 'drone' && oscIndex >= 5) {
-                targetVolume *= 0.6; // Reduce high frequencies by 40%
+                targetVolume *= 0.4; // Reduce high frequencies by 60% (was 40%)
+            } else if (this.mode === 'drone' && oscIndex === 4) {
+                targetVolume *= 0.7; // Reduce mid-high by 30%
             }
             
             this.fadeIn(oscIndex, fadeInSec, targetVolume);
@@ -398,11 +405,11 @@ class EnvironmentalAudioEngine {
         
         // INVERTED: high elevation = low freq
         // Percussive mode: much wider range for more frequency variation
-        // Drone mode: lower range for less treble
+        // Drone mode: lower range for less treble, more bass presence
         if (this.mode === 'percussive') {
             this.fundamentalFreq = 4800 - (elevationFactor * 4750); // 4800 to 50Hz (doubled range)
         } else {
-            this.fundamentalFreq = 800 - (elevationFactor * 750); // 800 to 50Hz (reduced from 1200)
+            this.fundamentalFreq = 400 - (elevationFactor * 350); // 400 to 50Hz (was 800-50Hz, now half)
         }
         
         // Temperature drift (hotter = more drift)
@@ -413,7 +420,7 @@ class EnvironmentalAudioEngine {
         const compassTones = this.getScaleTones();
         
         // Determine if we use multipliers (low fund) or divisors (high fund)
-        const useSubharmonics = this.fundamentalFreq > 1000; // Adjusted threshold
+        const useSubharmonics = this.fundamentalFreq > 200; // Lowered from 1000 - more likely to use subharmonics
         
         // Set fundamental (oscillator 0) - always the root
         const fund = this.fundamentalFreq + randomDrift;
