@@ -395,24 +395,39 @@ class EnvironmentalAudioEngine {
     updateFrequencies() {
         if (!this.isRunning) return;
         
-        // Calculate sun elevation
-        this.sunElevation = this.calculateSunElevation();
-        
         // Map sun elevation to fundamental frequency
-        // Elevation -90° to 90°, but we care about -20° to 70° roughly
-        // Solar noon (high elevation) = 200Hz (low freq)
-        // Sunrise/sunset (low/negative elevation) = 4800Hz (high freq)
-        const elevationNorm = Math.max(-20, Math.min(70, this.sunElevation));
-        const elevationFactor = (elevationNorm + 20) / 90; // 0 to 1
+        // OLD SYSTEM: Used sun elevation
+        // NEW SYSTEM: 24-hour sine wave centered on A440
+        // Noon (12pm) = A440, 6pm = A880 (1 octave up), 6am = A220 (1 octave down), Midnight = A440
         
-        // INVERTED: high elevation = low freq
-        // Percussive mode: much wider range for more frequency variation
-        // Drone mode: lower range for less treble, more bass presence
+        // timeOfDay is 0.0 to 1.0 (0 = midnight, 0.5 = noon, 1.0 = midnight)
+        // Convert to hours for clarity: 0-24
+        const hours = this.timeOfDay * 24;
+        
+        // Sine wave: peaks at 18 (6pm), troughs at 6 (6am), crosses reference at 0/12/24
+        // Phase shift so that noon (12) and midnight (0/24) are at reference A440
+        const phaseShift = (hours - 12) / 24 * 2 * Math.PI; // -π to π, centered at noon
+        
+        // Sine wave gives us -1 to +1, map to octave range
+        // sin value: -1 at 6am (one octave down), 0 at noon/midnight, +1 at 6pm (one octave up)
+        const octaveDeviation = Math.sin(phaseShift); // -1 to +1
+        
+        // A440 * 2^octaveDeviation gives us the frequency
+        // octaveDeviation = -1 → 220Hz (A220), 0 → 440Hz (A440), +1 → 880Hz (A880)
+        const referenceA = 440;
+        const baseFreq = referenceA * Math.pow(2, octaveDeviation);
+        
+        // Apply mode-specific adjustments while maintaining the A-based fundamental
+        let fundamentalFreq;
         if (this.mode === 'percussive') {
-            this.fundamentalFreq = 4800 - (elevationFactor * 4750); // 4800 to 50Hz (doubled range)
+            // Percussive: much wider range, scale up for variation
+            fundamentalFreq = baseFreq * (Math.random() * 10 + 1); // 440Hz-4840Hz range with variation
         } else {
-            this.fundamentalFreq = 400 - (elevationFactor * 350); // 400 to 50Hz (was 800-50Hz, now half)
+            // Drone: keep closer to pure A tuning, slight range for interest
+            fundamentalFreq = baseFreq * (Math.random() * 0.5 + 0.75); // ~330Hz-660Hz from base A440
         }
+        
+        this.fundamentalFreq = fundamentalFreq;
         
         // Temperature drift (hotter = more drift)
         const tempDrift = (this.temperature - 20) * 0.5; // ±10Hz per 20°C deviation
