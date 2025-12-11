@@ -26,7 +26,6 @@ const toggleBtn = document.getElementById('toggleBtn');
 const compassBtn = document.getElementById('compassBtn');
 const modeBtn = document.getElementById('modeBtn');
 const waveformBtn = document.getElementById('waveformBtn');
-const locationBtn = document.getElementById('locationBtn');
 const scaleSelector = document.getElementById('scaleSelector');
 const scaleSelect = document.getElementById('scaleSelect');
 const statusEl = document.getElementById('status');
@@ -43,7 +42,6 @@ toggleBtn.addEventListener('click', toggleAudio);
 compassBtn.addEventListener('click', enableCompass);
 modeBtn.addEventListener('click', toggleMode);
 waveformBtn.addEventListener('click', toggleWaveform);
-locationBtn.addEventListener('click', toggleLocation);
 scaleSelect.addEventListener('change', changeScale);
 
 audioEngine.onFrequencyUpdate = (frequencies) => {
@@ -114,9 +112,6 @@ async function startAudio() {
         // Show scale selector
         scaleSelector.style.display = 'flex';
         
-        // Show location mode button
-        locationBtn.style.display = 'block';
-        
         // Update UI
         toggleBtn.textContent = 'Stop';
         toggleBtn.classList.remove('btn-start');
@@ -183,10 +178,6 @@ function stopAudio() {
     scaleSelector.style.display = 'none';
     scaleSelect.value = 'dreyblatt';
     
-    // Hide location button
-    locationBtn.style.display = 'none';
-    locationBtn.textContent = 'Location: Continuous';
-    
     isRunning = false;
 }
 
@@ -214,20 +205,6 @@ function toggleWaveform() {
     // Update button text with capitalized name
     const displayName = newWaveform.charAt(0).toUpperCase() + newWaveform.slice(1);
     waveformBtn.textContent = `Wave: ${displayName}`;
-}
-
-function toggleLocation() {
-    const currentMode = audioEngine.locationMode;
-    const newMode = currentMode === 'continuous' ? 'chaotic' : 'continuous';
-    
-    audioEngine.setLocationMode(newMode);
-    
-    // Update button text
-    const displayName = newMode.charAt(0).toUpperCase() + newMode.slice(1);
-    locationBtn.textContent = `Location: ${displayName}`;
-    
-    // Visual feedback
-    locationBtn.style.background = newMode === 'continuous' ? '#0a5' : '#a05';
 }
 
 function changeScale() {

@@ -21,12 +21,6 @@ class EnvironmentalAudioEngine {
         // Scale type: 'dreyblatt', 'partch', 'harmonic', 'slendro', 'just', 'quartertone', 'yo'
         this.scale = 'dreyblatt';
         
-        // Location mode: 'continuous' or 'chaotic'
-        this.locationMode = 'continuous';
-        
-        // Track if user manually selected waveform (to override location-based)
-        this.userSelectedWaveform = false;
-        
         // Fundamental frequency based on sun position
         this.fundamentalFreq = 200;
         
@@ -155,7 +149,7 @@ class EnvironmentalAudioEngine {
     
     createReverbImpulse() {
         const sampleRate = this.audioContext.sampleRate;
-        const length = sampleRate * 3.5;
+        const length = sampleRate * 1.75; // Reduced from 3.5s to 1.75s (half)
         const impulse = this.audioContext.createBuffer(2, length, sampleRate);
         
         for (let channel = 0; channel < 2; channel++) {
@@ -194,7 +188,6 @@ class EnvironmentalAudioEngine {
     setWaveform(waveform) {
         // Switch between 'sine', 'triangle', 'sawtooth'
         this.waveform = waveform;
-        this.userSelectedWaveform = true; // User override, don't auto-change based on location
         
         // Update all oscillator types
         this.oscillators.forEach(osc => {
@@ -207,14 +200,6 @@ class EnvironmentalAudioEngine {
         this.scale = scale;
         
         // Update frequencies with new scale
-        this.updateFrequencies();
-    }
-    
-    setLocationMode(mode) {
-        // Switch between 'continuous' and 'chaotic' location influence
-        this.locationMode = mode;
-        
-        // Update frequencies and parameters with new mode
         this.updateFrequencies();
     }
     
@@ -268,11 +253,6 @@ class EnvironmentalAudioEngine {
             }
         }
         
-        // Apply location-based pulse density factor
-        if (this.pulseDensityFactor) {
-            interval = interval / this.pulseDensityFactor; // Higher factor = shorter intervals (denser)
-        }
-        
         const timer = setTimeout(() => {
             if (!this.isRunning) return;
             
@@ -283,9 +263,9 @@ class EnvironmentalAudioEngine {
             // Volume based on mode - higher for percussive now that attack is smoother
             let targetVolume = this.mode === 'percussive' ? 0.035 : 0.04;
             
-            // In drone mode, boost lower oscillators for bass presence
+            // In drone mode, boost lower oscillators for bass presence (reduced)
             if (this.mode === 'drone' && oscIndex <= 2) {
-                targetVolume *= 1.3; // Boost bass by 30%
+                targetVolume *= 1.15; // Boost bass by 15% (was 30%)
             }
             
             // In drone mode, reduce mid-range but keep ultra-highs audible
@@ -478,83 +458,6 @@ class EnvironmentalAudioEngine {
         const lonModulation = lonNorm * 50; // Longitude adds variation ±50Hz
         this.highPassFilter.frequency.value = sunBasedHPF + lonModulation;
         
-        // LOCATION-BASED REGIONAL CHARACTERISTICS
-        // Latitude and Longitude shape the sound based on where you are
-        
-        let waveformFromLocation, pulseDensityFactor, stereoWidthFactor, stereoSpeedFactor;
-        
-        if (this.locationMode === 'chaotic') {
-            // CHAOTIC MODE: Small movements create big changes
-            // Hash function creates pseudo-random but deterministic values
-            const hash = ((this.latitude * 117) + (this.longitude * 73)) % 360;
-            const hashNorm = hash / 360; // 0 to 1
-            
-            // Waveform based on hash (changes dramatically with small moves)
-            if (hashNorm < 0.33) {
-                waveformFromLocation = 'sine';
-            } else if (hashNorm < 0.67) {
-                waveformFromLocation = 'triangle';
-            } else {
-                waveformFromLocation = 'sawtooth';
-            }
-            
-            // Pulse density varies chaotically
-            pulseDensityFactor = 0.5 + (hashNorm * 1.5); // 0.5x to 2x
-            
-            // Stereo characteristics jump around
-            const hash2 = ((this.latitude * 211) + (this.longitude * 157)) % 360;
-            const hash2Norm = hash2 / 360;
-            stereoWidthFactor = 0.3 + (hash2Norm * 0.7); // 0.3 to 1.0
-            stereoSpeedFactor = 0.5 + (hashNorm * 1.5); // 0.5x to 2x
-            
-        } else {
-            // CONTINUOUS MODE: Smooth gradients, gradual changes while moving
-            
-            // Waveform based on latitude (smooth transitions)
-            const absLat = Math.abs(this.latitude);
-            if (absLat < 20) {
-                // Equatorial: triangle
-                waveformFromLocation = 'triangle';
-            } else if (absLat < 40) {
-                // Tropical to temperate: blend (pick based on exact value)
-                waveformFromLocation = (absLat < 30) ? 'triangle' : 'sine';
-            } else if (absLat < 60) {
-                // Temperate: sine
-                waveformFromLocation = 'sine';
-            } else {
-                // Polar: sawtooth
-                waveformFromLocation = 'sawtooth';
-            }
-            
-            // Pulse density based on longitude (smooth gradient)
-            // Western hemisphere = sparser, Eastern hemisphere = denser
-            const lonNormalized = (this.longitude + 180) / 360; // 0 to 1 (west to east)
-            pulseDensityFactor = 0.7 + (lonNormalized * 0.6); // 0.7x (west) to 1.3x (east)
-            
-            // Stereo width based on latitude (smooth gradient)
-            // Equator = wide, poles = narrow
-            const latFactor = 1 - (absLat / 90); // 1 at equator, 0 at poles
-            stereoWidthFactor = 0.4 + (latFactor * 0.6); // 0.4 (polar) to 1.0 (equator)
-            
-            // Stereo speed based on longitude (smooth gradient)
-            // Western = slower, Eastern = faster
-            stereoSpeedFactor = 0.6 + (lonNormalized * 0.8); // 0.6x (west) to 1.4x (east)
-        }
-        
-        // Store these for use in pulse scheduling and stereo calculations
-        this.pulseDensityFactor = pulseDensityFactor;
-        this.stereoWidthFactor = stereoWidthFactor;
-        this.stereoSpeedFactor = stereoSpeedFactor;
-        
-        // Auto-set waveform based on location (unless user has manually changed it)
-        // We'll track if user manually changed waveform with a flag
-        if (!this.userSelectedWaveform) {
-            this.waveform = waveformFromLocation;
-            this.oscillators.forEach(osc => {
-                osc.type = this.waveform;
-            });
-        }
-        
         // Get scale tones based on compass and selected scale
         const compassTones = this.getScaleTones();
         
@@ -645,17 +548,12 @@ class EnvironmentalAudioEngine {
         // Map heading to pan position, avoiding hard left/right
         // 0° (North) = center, 90° (East) = right, 180° (South) = center, 270° (West) = left
         const headingRad = (this.heading * Math.PI) / 180;
+        const panPosition = Math.sin(headingRad) * 0.7; // ±0.7 max (avoiding ±1.0)
         
-        // Apply location-based stereo speed factor (how fast panning responds to rotation)
-        const effectiveHeading = headingRad * (this.stereoSpeedFactor || 1.0);
-        const panPosition = Math.sin(effectiveHeading) * 0.7; // ±0.7 max (avoiding ±1.0)
-        
-        // Apply panning to all oscillators with location-based width variations
+        // Apply panning to all oscillators with slight variations
         this.panners.forEach((panner, i) => {
             // Each oscillator gets slightly offset pan for stereo width
-            // Location affects how wide the stereo field is
-            const baseOffset = (i - 3.5) * 0.05; // -0.175 to +0.175
-            const offset = baseOffset * (this.stereoWidthFactor || 1.0);
+            const offset = (i - 3.5) * 0.05; // -0.175 to +0.175
             const finalPan = Math.max(-0.8, Math.min(0.8, panPosition + offset));
             panner.pan.value = finalPan;
         });
