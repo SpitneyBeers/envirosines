@@ -300,8 +300,8 @@ class EnvironmentalAudioEngine {
         const irregularity = (Math.random() - 0.5) * 0.02; // ±10ms variation
         const organicDuration = Math.max(0.01, duration + irregularity);
         
-        // Add gentle amplitude flutter (subtle random modulation)
-        const flutter = (Math.random() - 0.5) * 0.005; // ±0.5% volume variation
+        // Minimal amplitude flutter (extremely subtle)
+        const flutter = (Math.random() - 0.5) * 0.001; // ±0.1% volume variation (reduced from 0.5%)
         const organicVolume = targetVolume * (1 + flutter);
         
         gainNode.gain.cancelScheduledValues(now);
@@ -690,8 +690,8 @@ class EnvironmentalAudioEngine {
         const now = this.audioContext.currentTime;
         const osc = this.oscillators[index];
         
-        // Add very subtle pitch instability for organic sound (±0.05Hz, minimal drift)
-        const pitchDrift = (Math.random() - 0.5) * 0.1;
+        // Minimal pitch instability for extremely subtle organic quality (±0.01Hz)
+        const pitchDrift = (Math.random() - 0.5) * 0.02;
         const organicFreq = frequency + pitchDrift;
         
         osc.frequency.cancelScheduledValues(now);
