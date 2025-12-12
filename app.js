@@ -245,8 +245,12 @@ function onLocationError(error) {
 // Throttle compass updates to prevent warbling
 let lastCompassUpdate = 0;
 const COMPASS_THROTTLE_MS = 500; // Only update every 500ms
+let compassEnabled = false;
 
 function onOrientationChange(event) {
+    // Only process if compass is enabled
+    if (!compassEnabled) return;
+    
     // Get compass heading
     // alpha = compass heading (0-360, 0 = North)
     // Need to handle both absolute and relative compass
@@ -273,14 +277,28 @@ function onOrientationChange(event) {
 
 async function enableCompass() {
     try {
+        if (compassEnabled) {
+            // Toggle OFF - disable compass
+            compassEnabled = false;
+            compassBtn.textContent = 'Enable Compass';
+            compassBtn.style.background = '#a50';
+            headingEl.textContent = 'Disabled';
+            
+            // Reset heading to 0 (North)
+            currentData.heading = 0;
+            updateAudioEngine();
+            return;
+        }
+        
+        // Toggle ON - enable compass
         if (typeof DeviceOrientationEvent.requestPermission === 'function') {
             // iOS 13+ requires permission
             const permission = await DeviceOrientationEvent.requestPermission();
             
             if (permission === 'granted') {
+                compassEnabled = true;
                 window.addEventListener('deviceorientation', onOrientationChange);
                 compassBtn.textContent = 'Compass Enabled ✓';
-                compassBtn.disabled = true;
                 compassBtn.style.background = '#0a0';
             } else {
                 headingEl.textContent = 'Permission denied';
@@ -289,9 +307,9 @@ async function enableCompass() {
             }
         } else {
             // Non-iOS or older iOS - no permission needed
+            compassEnabled = true;
             window.addEventListener('deviceorientation', onOrientationChange);
             compassBtn.textContent = 'Compass Enabled ✓';
-            compassBtn.disabled = true;
             compassBtn.style.background = '#0a0';
         }
     } catch (error) {

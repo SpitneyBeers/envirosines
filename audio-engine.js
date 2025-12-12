@@ -269,6 +269,13 @@ class EnvironmentalAudioEngine {
                 targetVolume = 0.035;
             } else if (this.mode === 'bell') {
                 targetVolume = 0.05; // Slightly louder for bell strikes
+                
+                // Reduce volume for upper register oscillators (less shrill)
+                if (oscIndex >= 5) {
+                    targetVolume *= 0.4; // Upper oscillators much quieter (60% reduction)
+                } else if (oscIndex === 4) {
+                    targetVolume *= 0.7; // Mid-high quieter (30% reduction)
+                }
             } else {
                 targetVolume = 0.04; // Drone
             }
@@ -276,6 +283,33 @@ class EnvironmentalAudioEngine {
             // In drone mode, boost lower oscillators for bass presence
             if (this.mode === 'drone' && oscIndex <= 2) {
                 targetVolume *= 1.15;
+            }
+            
+            // BELL MODE: Add sharp click at start for percussive attack
+            if (this.mode === 'bell') {
+                // Create white noise buffer for click
+                const clickDuration = 0.005; // 5ms click
+                const sampleRate = this.audioContext.sampleRate;
+                const clickBuffer = this.audioContext.createBuffer(1, sampleRate * clickDuration, sampleRate);
+                const clickData = clickBuffer.getChannelData(0);
+                
+                // Generate short burst of noise for click
+                for (let i = 0; i < clickData.length; i++) {
+                    const decay = 1 - (i / clickData.length); // Quick decay
+                    clickData[i] = (Math.random() * 2 - 1) * decay * 0.3; // Quiet click
+                }
+                
+                // Play click through separate buffer source
+                const clickSource = this.audioContext.createBufferSource();
+                const clickGain = this.audioContext.createGain();
+                clickSource.buffer = clickBuffer;
+                clickGain.gain.value = targetVolume * 0.5; // Click at 50% of tone volume
+                
+                clickSource.connect(clickGain);
+                clickGain.connect(this.dryGain);
+                clickGain.connect(this.wetGain);
+                
+                clickSource.start(now);
             }
             
             // In drone mode, reduce mid-range but keep ultra-highs audible
