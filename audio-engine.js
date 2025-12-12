@@ -18,7 +18,7 @@ class EnvironmentalAudioEngine {
         // Waveform type: 'sine', 'triangle', 'sawtooth'
         this.waveform = 'sine';
         
-        // Scale type: 'dreyblatt', 'partch', 'harmonic', 'slendro', 'just', 'quartertone', 'yo'
+        // Scale type: 'dreyblatt', 'harmonic', 'slendro', 'pelog', 'quartertone'
         this.scale = 'dreyblatt';
         
         // Fundamental frequency based on sun position
@@ -500,7 +500,7 @@ class EnvironmentalAudioEngine {
             } else {
                 // Drone mode: spread spectrum more - deep bass AND high shimmer
                 if (oscIdx === 1 || oscIdx === 2) {
-                    harmonic = harmonic * 0.5; // Bass region
+                    harmonic = harmonic * 1.0; // Was ×0.5 (one octave down), now normal (no shift - brings up one octave)
                 } else if (oscIdx === 6 || oscIdx === 7) {
                     harmonic = harmonic * 8.0; // Ultra high shimmer (3 octaves up)
                 } else if (oscIdx === 5) {
@@ -580,14 +580,6 @@ class EnvironmentalAudioEngine {
                 ];
                 break;
                 
-            case 'partch':
-                // Harry Partch's 43-tone just intonation (subset of key ratios)
-                scaleRatios = [
-                    1.0, 1.0125, 1.125, 1.25, 1.3333, 1.5, 1.6, 1.6875, 1.75, 1.875,
-                    2.0, 2.25, 2.5, 2.6667, 3.0, 3.2, 3.375, 3.5, 3.75, 4.0
-                ];
-                break;
-                
             case 'harmonic':
                 // Pure harmonic series (Grisey-style, harmonics 1-20)
                 scaleRatios = [
@@ -607,13 +599,13 @@ class EnvironmentalAudioEngine {
                 ];
                 break;
                 
-            case 'just':
-                // Classic Just Intonation (major scale ratios)
-                const justBase = [1.0, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875]; // 9/8, 5/4, 4/3, 3/2, 5/3, 15/8
+            case 'pelog':
+                // Indonesian Pelog (7-tone gamelan scale, unequal intervals)
+                const pelogBase = [1.0, 1.122, 1.26, 1.414, 1.587, 1.682, 1.888]; // Approximate ratios
                 scaleRatios = [
-                    ...justBase,
-                    ...justBase.map(r => r * 2),
-                    ...justBase.map(r => r * 3)
+                    ...pelogBase,
+                    ...pelogBase.map(r => r * 2),
+                    ...pelogBase.map(r => r * 3)
                 ];
                 break;
                 
@@ -622,18 +614,6 @@ class EnvironmentalAudioEngine {
                 scaleRatios = Array.from({length: 24}, (_, i) => 
                     Math.pow(2, i / 24) // 2^(n/24) for equal divisions
                 );
-                break;
-                
-            case 'yo':
-                // Japanese Yo scale (pentatonic used in Gagaku)
-                // Ratios approximate traditional tuning
-                const yoBase = [1.0, 1.125, 1.333, 1.5, 1.6875]; // Roughly C D F G A
-                scaleRatios = [
-                    ...yoBase,
-                    ...yoBase.map(r => r * 2),
-                    ...yoBase.map(r => r * 3),
-                    ...yoBase.map(r => r * 4)
-                ];
                 break;
                 
             default:
@@ -710,8 +690,8 @@ class EnvironmentalAudioEngine {
         const now = this.audioContext.currentTime;
         const osc = this.oscillators[index];
         
-        // Add subtle pitch instability for organic sound (±0.15Hz random drift, reduced from 0.3Hz)
-        const pitchDrift = (Math.random() - 0.5) * 0.3;
+        // Add very subtle pitch instability for organic sound (±0.05Hz, minimal drift)
+        const pitchDrift = (Math.random() - 0.5) * 0.1;
         const organicFreq = frequency + pitchDrift;
         
         osc.frequency.cancelScheduledValues(now);
