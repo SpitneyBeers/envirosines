@@ -12,7 +12,7 @@ class EnvironmentalAudioEngine {
         this.highPassFilter = null;
         this.isRunning = false;
         
-        // Playback mode: 'drone' or 'percussive'
+        // Playback mode: 'drone' or 'pulse' or 'bell'
         this.mode = 'drone';
         
         // Waveform type: 'sine', 'triangle', 'sawtooth'
@@ -210,26 +210,43 @@ class EnvironmentalAudioEngine {
         
         let interval, duration, fadeIn, fadeOut;
         
-        if (this.mode === 'percussive') {
-            // PERCUSSIVE MODE: Short, sharp bursts, slower rate
+        if (this.mode === 'pulse') {
+            // PULSE MODE: Short, sharp bursts, slower rate (renamed from percussive)
             duration = 50 + Math.random() * 250; // 50-300ms
-            fadeIn = (20 + Math.random() * 60) / 1000; // 20-80ms attack (smoother to prevent clipping)
+            fadeIn = (20 + Math.random() * 60) / 1000; // 20-80ms attack
             fadeOut = (10 + Math.random() * 40) / 1000; // 10-50ms release
             
             if (isSpeedOscillator) {
-                // Oscillator 3: VERY dramatic speed response
                 const speedNorm = Math.min(this.speed / 35.8, 1);
                 const minInterval = 10000 - (speedNorm * 9500); // 10s to 0.5s
                 const maxInterval = 20000 - (speedNorm * 19000); // 20s to 1s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else if (isSpeedControlled) {
-                // Speed affects pulse density
                 const speedNorm = Math.min(this.speed / 35.8, 1);
                 const minInterval = 3000 - (speedNorm * 1000); // 3s to 2s
                 const maxInterval = 8000 - (speedNorm * 3000); // 8s to 5s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
                 interval = 2000 + Math.random() * 6000; // 2s-8s
+            }
+        } else if (this.mode === 'bell') {
+            // BELL MODE: Very short, sharp attacks with long decay (tuned bells)
+            duration = 800 + Math.random() * 1200; // 0.8-2 seconds total
+            fadeIn = (1 + Math.random() * 4) / 1000; // 1-5ms instant attack (bell strike)
+            fadeOut = 0.7 + Math.random() * 1.2; // 0.7-1.9s long decay (bell ring)
+            
+            if (isSpeedOscillator) {
+                const speedNorm = Math.min(this.speed / 35.8, 1);
+                const minInterval = 8000 - (speedNorm * 7000); // 8s to 1s
+                const maxInterval = 15000 - (speedNorm * 13000); // 15s to 2s
+                interval = minInterval + Math.random() * (maxInterval - minInterval);
+            } else if (isSpeedControlled) {
+                const speedNorm = Math.min(this.speed / 35.8, 1);
+                const minInterval = 4000 - (speedNorm * 2000); // 4s to 2s
+                const maxInterval = 10000 - (speedNorm * 6000); // 10s to 4s
+                interval = minInterval + Math.random() * (maxInterval - minInterval);
+            } else {
+                interval = 3000 + Math.random() * 7000; // 3-10 seconds
             }
         } else {
             // DRONE MODE: Longer, sustained tones
@@ -238,7 +255,6 @@ class EnvironmentalAudioEngine {
             fadeOut = 0.3 + Math.random() * 1.0; // 0.3-1.3s
             
             if (isSpeedOscillator) {
-                // Oscillator 3: dramatic speed response in drone mode too
                 const speedNorm = Math.min(this.speed / 35.8, 1);
                 const minInterval = 12000 - (speedNorm * 10000); // 12s to 2s
                 const maxInterval = 20000 - (speedNorm * 16000); // 20s to 4s
@@ -256,16 +272,23 @@ class EnvironmentalAudioEngine {
         const timer = setTimeout(() => {
             if (!this.isRunning) return;
             
-            // Convert ms to seconds for drone mode fade times
-            const fadeInSec = this.mode === 'percussive' ? fadeIn : fadeIn;
-            const fadeOutSec = this.mode === 'percussive' ? fadeOut : fadeOut;
+            // Fade times already in seconds
+            const fadeInSec = fadeIn;
+            const fadeOutSec = fadeOut;
             
-            // Volume based on mode - higher for percussive now that attack is smoother
-            let targetVolume = this.mode === 'percussive' ? 0.035 : 0.04;
+            // Volume based on mode
+            let targetVolume;
+            if (this.mode === 'pulse') {
+                targetVolume = 0.035;
+            } else if (this.mode === 'bell') {
+                targetVolume = 0.05; // Slightly louder for bell strikes
+            } else {
+                targetVolume = 0.04; // Drone
+            }
             
-            // In drone mode, boost lower oscillators for bass presence (reduced)
+            // In drone mode, boost lower oscillators for bass presence
             if (this.mode === 'drone' && oscIndex <= 2) {
-                targetVolume *= 1.15; // Boost bass by 15% (was 30%)
+                targetVolume *= 1.15;
             }
             
             // In drone mode, reduce mid-range but keep ultra-highs audible
@@ -419,9 +442,12 @@ class EnvironmentalAudioEngine {
         
         // Apply mode-specific adjustments while maintaining the A-based fundamental
         let fundamentalFreq;
-        if (this.mode === 'percussive') {
-            // Percussive: much wider range, scale up for variation
+        if (this.mode === 'pulse') {
+            // Pulse: much wider range, scale up for variation
             fundamentalFreq = baseFreq * (Math.random() * 10 + 1); // 440Hz-4840Hz range with variation
+        } else if (this.mode === 'bell') {
+            // Bell: higher frequencies for metallic bell tones
+            fundamentalFreq = baseFreq * (Math.random() * 6 + 3); // 1320Hz-3960Hz range (higher)
         } else {
             // Drone: keep closer to pure A tuning, slight range for interest
             fundamentalFreq = baseFreq * (Math.random() * 0.5 + 0.75); // ~330Hz-660Hz from base A440
@@ -486,21 +512,26 @@ class EnvironmentalAudioEngine {
                 harmonic = fund * tone * octaveMultiplier;
             }
             
-            // In percussive mode, shift octaves more extremely to widen frequency spread
-            if (this.mode === 'percussive') {
-                // Lower oscillators (1, 2) go down two octaves
+            // Mode-specific octave shifts
+            if (this.mode === 'pulse') {
+                // Pulse: extreme shifts for wide frequency spread
                 if (oscIdx <= 2) {
-                    harmonic = harmonic * 0.25;
+                    harmonic = harmonic * 0.25; // Down two octaves
                 }
-                // Higher oscillators (5, 6, 7) go up two octaves
                 else if (oscIdx >= 5) {
-                    harmonic = harmonic * 4.0;
+                    harmonic = harmonic * 4.0; // Up two octaves
                 }
-                // Middle oscillator (4) stays same
+            } else if (this.mode === 'bell') {
+                // Bell: concentrate in upper harmonics for metallic sound
+                if (oscIdx <= 2) {
+                    harmonic = harmonic * 2.0; // Up one octave
+                } else if (oscIdx >= 5) {
+                    harmonic = harmonic * 8.0; // Up three octaves (very high, bell-like)
+                }
             } else {
-                // Drone mode: spread spectrum more - deep bass AND high shimmer
+                // Drone mode: spread spectrum more - normal bass AND high shimmer
                 if (oscIdx === 1 || oscIdx === 2) {
-                    harmonic = harmonic * 1.0; // Was ×0.5 (one octave down), now normal (no shift - brings up one octave)
+                    harmonic = harmonic * 1.0; // Normal pitch (no shift)
                 } else if (oscIdx === 6 || oscIdx === 7) {
                     harmonic = harmonic * 8.0; // Ultra high shimmer (3 octaves up)
                 } else if (oscIdx === 5) {
@@ -512,13 +543,11 @@ class EnvironmentalAudioEngine {
         });
         
         // Oscillator 3: Direct speed control (independent of fundamental)
-        // One octave down: 50Hz to 1000Hz (was 100Hz to 2000Hz)
         const speedNorm = Math.min(this.speed / 35.8, 1);
         let speedFreq = 50 + (speedNorm * 950);
         
-        // In percussive mode, shift based on speed more extremely
-        // Slow = much lower (×0.25), Fast = much higher (×4.0)
-        if (this.mode === 'percussive') {
+        // In pulse/bell modes, shift based on speed more extremely
+        if (this.mode === 'pulse' || this.mode === 'bell') {
             if (speedNorm < 0.5) {
                 speedFreq = speedFreq * 0.25; // Very low for slow speeds
             } else {
@@ -690,9 +719,8 @@ class EnvironmentalAudioEngine {
         const now = this.audioContext.currentTime;
         const osc = this.oscillators[index];
         
-        // Minimal pitch instability for extremely subtle organic quality (±0.01Hz)
-        const pitchDrift = (Math.random() - 0.5) * 0.02;
-        const organicFreq = frequency + pitchDrift;
+        // No pitch drift - perfectly stable tones
+        const organicFreq = frequency;
         
         osc.frequency.cancelScheduledValues(now);
         osc.frequency.setValueAtTime(osc.frequency.value, now);

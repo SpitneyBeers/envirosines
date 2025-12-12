@@ -182,16 +182,19 @@ function stopAudio() {
 }
 
 function toggleMode() {
-    const currentMode = audioEngine.mode;
-    const newMode = currentMode === 'drone' ? 'percussive' : 'drone';
+    const modes = ['drone', 'pulse', 'bell'];
+    const currentIndex = modes.indexOf(audioEngine.mode);
+    const nextIndex = (currentIndex + 1) % modes.length;
+    const newMode = modes[nextIndex];
     
     audioEngine.setMode(newMode);
     
-    // Update button text
-    modeBtn.textContent = newMode === 'drone' ? 'Mode: Drone' : 'Mode: Percussive';
+    // Update button text and color
+    const displayNames = { 'drone': 'Drone', 'pulse': 'Pulse', 'bell': 'Bell' };
+    const colors = { 'drone': '#a50', 'pulse': '#0a5', 'bell': '#50a' };
     
-    // Optional: visual feedback
-    modeBtn.style.background = newMode === 'drone' ? '#a50' : '#0a5';
+    modeBtn.textContent = `Mode: ${displayNames[newMode]}`;
+    modeBtn.style.background = colors[newMode];
 }
 
 function toggleWaveform() {
