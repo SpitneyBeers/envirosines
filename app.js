@@ -242,6 +242,10 @@ function onLocationError(error) {
     }
 }
 
+// Throttle compass updates to prevent warbling
+let lastCompassUpdate = 0;
+const COMPASS_THROTTLE_MS = 500; // Only update every 500ms
+
 function onOrientationChange(event) {
     // Get compass heading
     // alpha = compass heading (0-360, 0 = North)
@@ -254,13 +258,17 @@ function onOrientationChange(event) {
     
     currentData.heading = heading;
     
-    // Update UI
+    // Update UI every time (smooth display)
     const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
     const dirIndex = Math.round(heading / 45) % 8;
     headingEl.textContent = `${heading.toFixed(0)}° (${directions[dirIndex]})`;
     
-    // Update audio engine
-    updateAudioEngine();
+    // Throttle audio updates to prevent warbling
+    const now = Date.now();
+    if (now - lastCompassUpdate >= COMPASS_THROTTLE_MS) {
+        lastCompassUpdate = now;
+        updateAudioEngine();
+    }
 }
 
 async function enableCompass() {
