@@ -39,9 +39,6 @@ class EnvironmentalAudioEngine {
         // Sun position
         this.sunElevation = 0; // degrees above horizon
         
-        // Vibrato/tremolo LFOs
-        this.vibratoLFOs = [];
-        
         this.onFrequencyUpdate = null;
     }
     
@@ -100,17 +97,7 @@ class EnvironmentalAudioEngine {
             // Initialize panner (will be controlled by compass)
             panner.pan.value = 0; // Center
             
-            // Create vibrato LFO for each oscillator
-            const lfo = this.audioContext.createOscillator();
-            const lfoGain = this.audioContext.createGain();
-            lfo.frequency.value = 5 + Math.random() * 3; // 5-8 Hz vibrato rate
-            lfoGain.gain.value = 0; // Will be controlled by speed
-            
-            lfo.connect(lfoGain);
-            lfoGain.connect(oscillator.frequency);
-            lfo.start();
-            
-            this.vibratoLFOs.push({ lfo, lfoGain });
+            // No vibrato LFO - perfectly stable tones
             
             oscillator.type = this.waveform; // Use selected waveform
             oscillator.frequency.value = 200;
@@ -353,13 +340,6 @@ class EnvironmentalAudioEngine {
         this.sporadicTimers.forEach(timer => clearTimeout(timer));
         this.sporadicTimers = [];
         
-        // Stop LFOs
-        this.vibratoLFOs.forEach(({ lfo }) => {
-            try {
-                lfo.stop();
-            } catch (e) {}
-        });
-        this.vibratoLFOs = [];
         
         // Stop oscillators
         this.oscillators.forEach(osc => {
@@ -557,14 +537,7 @@ class EnvironmentalAudioEngine {
         
         this.setOscillatorFrequency(3, speedFreq);
         
-        // Update vibrato/tremolo based on speed (INVERTED)
-        // Slow speed = more vibrato, fast speed = less
-        // (reusing speedNorm from above)
-        const vibratoDepth = 5.5 - (speedNorm * 5); // 5.5Hz at 0 speed, 0.5Hz at max speed
-        
-        this.vibratoLFOs.forEach(({ lfoGain }) => {
-            lfoGain.gain.value = vibratoDepth;
-        });
+        // No vibrato - perfectly stable oscillators
         
         // Filters now controlled by sun position (see earlier in updateFrequencies)
         
