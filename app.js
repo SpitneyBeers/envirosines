@@ -18,7 +18,9 @@ let currentData = {
     humidity: 50,
     heading: 0,
     weatherDescription: '',
-    timeOfDay: 0.5
+    timeOfDay: 0.5,
+    populationDensity: 0.5, // 0 = rural, 1 = dense urban
+    trafficDensity: 0.0 // 0 = no traffic, 1 = heavy traffic
 };
 
 // DOM elements
@@ -228,6 +230,9 @@ function onLocationUpdate(position) {
     const speedMph = currentData.speed * 2.237;
     speedEl.textContent = `${speedMph.toFixed(1)} mph`;
     
+    // Update traffic density based on speed changes
+    updateTrafficDensity();
+    
     // Update audio engine
     updateAudioEngine();
 }
@@ -336,6 +341,70 @@ function updateTimeOfDay() {
     updateAudioEngine();
 }
 
+async function fetchPopulationDensity() {
+    // Use OpenStreetMap Overpass API to count buildings in area
+    // More buildings = higher population density
+    const radius = 500; // meters
+    const lat = currentData.latitude;
+    const lon = currentData.longitude;
+    
+    try {
+        const query = `
+            [out:json];
+            (
+                way["building"](around:${radius},${lat},${lon});
+                relation["building"](around:${radius},${lat},${lon});
+            );
+            out count;
+        `;
+        
+        const response = await fetch('https://overpass-api.de/api/interpreter', {
+            method: 'POST',
+            body: 'data=' + encodeURIComponent(query)
+        });
+        
+        const data = await response.json();
+        const buildingCount = data.elements.length;
+        
+        // Normalize: 0-10 buildings = rural (0.0), 100+ = urban (1.0)
+        currentData.populationDensity = Math.min(1.0, buildingCount / 100);
+        
+        console.log(`Buildings in ${radius}m: ${buildingCount}, density: ${currentData.populationDensity.toFixed(2)}`);
+    } catch (error) {
+        console.error('OSM density fetch error:', error);
+        // Fallback to moderate density
+        currentData.populationDensity = 0.5;
+    }
+}
+
+function updateTrafficDensity() {
+    // Simulate traffic density based on:
+    // 1. Speed changes (rapid deceleration = traffic)
+    // 2. Time of day (rush hours)
+    // 3. Population density (urban areas have more traffic)
+    
+    const speedMph = currentData.speed * 2.237; // m/s to mph
+    const hour = new Date().getHours();
+    
+    // Rush hour multiplier (7-9am, 4-7pm = high traffic)
+    let rushHourFactor = 0;
+    if ((hour >= 7 && hour <= 9) || (hour >= 16 && hour <= 19)) {
+        rushHourFactor = 0.6;
+    }
+    
+    // Low speed in populated area = likely traffic
+    const speedFactor = speedMph < 15 && currentData.populationDensity > 0.5 ? 0.4 : 0;
+    
+    // Combine factors
+    currentData.trafficDensity = Math.min(1.0, 
+        rushHourFactor + 
+        speedFactor + 
+        (currentData.populationDensity * 0.2) // Urban baseline
+    );
+    
+    console.log(`Traffic density: ${currentData.trafficDensity.toFixed(2)}`);
+}
+
 async function fetchWeather() {
     if (WEATHER_API_KEY === 'YOUR_API_KEY_HERE') {
         console.log('Weather API key not set');
@@ -346,6 +415,12 @@ async function fetchWeather() {
     if (!currentData.latitude || !currentData.longitude) {
         return;
     }
+    
+    // Fetch population density from OSM (building density as proxy)
+    await fetchPopulationDensity();
+    
+    // Simulate traffic density based on speed and time of day
+    updateTrafficDensity();
     
     try {
         const url = `https://api.openweathermap.org/data/2.5/weather?lat=${currentData.latitude}&lon=${currentData.longitude}&appid=${WEATHER_API_KEY}&units=metric`;
@@ -383,7 +458,9 @@ function updateAudioEngine() {
         currentData.temperature,
         currentData.humidity,
         currentData.heading,
-        currentData.timeOfDay
+        currentData.timeOfDay,
+        currentData.populationDensity,
+        currentData.trafficDensity
     );
 }
 

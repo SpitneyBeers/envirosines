@@ -39,6 +39,14 @@ class EnvironmentalAudioEngine {
         // Sun position
         this.sunElevation = 0; // degrees above horizon
         
+        // Population and traffic density (0.0 to 1.0)
+        this.populationDensity = 0.5; // 0 = rural, 1 = dense urban
+        this.trafficDensity = 0.0; // 0 = no traffic, 1 = heavy traffic
+        
+        // Compass heading tracking for staggered updates
+        this.lastHeading = 0;
+        this.pendingFrequencyUpdates = []; // Queue of oscillators waiting to update
+        
         this.onFrequencyUpdate = null;
     }
     
@@ -97,7 +105,19 @@ class EnvironmentalAudioEngine {
             // Initialize panner (will be controlled by compass)
             panner.pan.value = 0; // Center
             
-            // No vibrato LFO - perfectly stable tones
+            // Create tremolo LFO for traffic density (amplitude modulation)
+            const tremoloLFO = this.audioContext.createOscillator();
+            const tremoloGain = this.audioContext.createGain();
+            tremoloLFO.frequency.value = 8; // 8 Hz tremolo rate (staccato)
+            tremoloGain.gain.value = 0; // Will be controlled by traffic density
+            
+            tremoloLFO.connect(tremoloGain);
+            tremoloGain.connect(gainNode.gain); // Modulate amplitude
+            tremoloLFO.start();
+            
+            // Store tremolo for later control
+            if (!this.tremoloLFOs) this.tremoloLFOs = [];
+            this.tremoloLFOs.push({ lfo: tremoloLFO, gain: tremoloGain });
             
             oscillator.type = this.waveform; // Use selected waveform
             oscillator.frequency.value = 200;
@@ -203,18 +223,17 @@ class EnvironmentalAudioEngine {
             fadeIn = (20 + Math.random() * 60) / 1000; // 20-80ms attack
             fadeOut = (10 + Math.random() * 40) / 1000; // 10-50ms release
             
+            // ALL oscillators respond to speed for density
+            const speedNorm = Math.min(this.speed / 35.8, 1);
             if (isSpeedOscillator) {
-                const speedNorm = Math.min(this.speed / 35.8, 1);
                 const minInterval = 10000 - (speedNorm * 9500); // 10s to 0.5s
                 const maxInterval = 20000 - (speedNorm * 19000); // 20s to 1s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
-            } else if (isSpeedControlled) {
-                const speedNorm = Math.min(this.speed / 35.8, 1);
-                const minInterval = 3000 - (speedNorm * 1000); // 3s to 2s
-                const maxInterval = 8000 - (speedNorm * 3000); // 8s to 5s
-                interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
-                interval = 2000 + Math.random() * 6000; // 2s-8s
+                // All other oscillators also speed-controlled for density
+                const minInterval = 4000 - (speedNorm * 3000); // 4s to 1s
+                const maxInterval = 10000 - (speedNorm * 8000); // 10s to 2s
+                interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         } else if (this.mode === 'bell') {
             // BELL MODE: Very short, sharp attacks with long decay (tuned bells)
@@ -222,18 +241,17 @@ class EnvironmentalAudioEngine {
             fadeIn = (1 + Math.random() * 4) / 1000; // 1-5ms instant attack (bell strike)
             fadeOut = 0.7 + Math.random() * 1.2; // 0.7-1.9s long decay (bell ring)
             
+            // ALL oscillators respond to speed for density
+            const speedNorm = Math.min(this.speed / 35.8, 1);
             if (isSpeedOscillator) {
-                const speedNorm = Math.min(this.speed / 35.8, 1);
                 const minInterval = 8000 - (speedNorm * 7000); // 8s to 1s
                 const maxInterval = 15000 - (speedNorm * 13000); // 15s to 2s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
-            } else if (isSpeedControlled) {
-                const speedNorm = Math.min(this.speed / 35.8, 1);
-                const minInterval = 4000 - (speedNorm * 2000); // 4s to 2s
-                const maxInterval = 10000 - (speedNorm * 6000); // 10s to 4s
-                interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
-                interval = 3000 + Math.random() * 7000; // 3-10 seconds
+                // All other oscillators also speed-controlled for density
+                const minInterval = 6000 - (speedNorm * 4500); // 6s to 1.5s
+                const maxInterval = 12000 - (speedNorm * 9000); // 12s to 3s
+                interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         } else {
             // DRONE MODE: Longer, sustained tones
@@ -241,18 +259,17 @@ class EnvironmentalAudioEngine {
             fadeIn = 0.2 + Math.random() * 0.5; // 0.2-0.7s
             fadeOut = 0.3 + Math.random() * 1.0; // 0.3-1.3s
             
+            // ALL oscillators respond to speed for density
+            const speedNorm = Math.min(this.speed / 35.8, 1);
             if (isSpeedOscillator) {
-                const speedNorm = Math.min(this.speed / 35.8, 1);
                 const minInterval = 12000 - (speedNorm * 10000); // 12s to 2s
                 const maxInterval = 20000 - (speedNorm * 16000); // 20s to 4s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
-            } else if (isSpeedControlled) {
-                const speedNorm = Math.min(this.speed / 35.8, 1);
-                const minInterval = 8000 - (speedNorm * 7000); // 8s to 1s
+            } else {
+                // All other oscillators also speed-controlled for density
+                const minInterval = 8000 - (speedNorm * 6000); // 8s to 2s
                 const maxInterval = 16000 - (speedNorm * 12000); // 16s to 4s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
-            } else {
-                interval = 3000 + Math.random() * 13000; // 3-16 seconds
             }
         }
         
@@ -285,6 +302,17 @@ class EnvironmentalAudioEngine {
                 targetVolume *= 1.15;
             }
             
+            // In drone mode, reduce mid-range but keep ultra-highs audible
+            if (this.mode === 'drone') {
+                if (oscIndex === 4) {
+                    targetVolume *= 0.5; // Cut mid-range significantly
+                } else if (oscIndex === 5) {
+                    targetVolume *= 0.5; // Reduce high-mid
+                } else if (oscIndex === 6 || oscIndex === 7) {
+                    targetVolume *= 0.6; // Keep ultra-highs more present
+                }
+            }
+            
             // BELL MODE: Add sharp click at start for percussive attack
             if (this.mode === 'bell') {
                 // Create white noise buffer for click
@@ -310,15 +338,6 @@ class EnvironmentalAudioEngine {
                 clickGain.connect(this.wetGain);
                 
                 clickSource.start(now);
-            }
-            
-            // In drone mode, reduce mid-range but keep ultra-highs audible
-            if (this.mode === 'drone' && oscIndex === 4) {
-                targetVolume *= 0.5; // Cut mid-range significantly
-            } else if (this.mode === 'drone' && oscIndex === 5) {
-                targetVolume *= 0.5; // Reduce high-mid
-            } else if (this.mode === 'drone' && (oscIndex === 6 || oscIndex === 7)) {
-                targetVolume *= 0.6; // Keep ultra-highs more present (was 0.4)
             }
             
             this.fadeIn(oscIndex, fadeInSec, targetVolume);
@@ -374,6 +393,15 @@ class EnvironmentalAudioEngine {
         this.sporadicTimers.forEach(timer => clearTimeout(timer));
         this.sporadicTimers = [];
         
+        // Stop tremolo LFOs
+        if (this.tremoloLFOs) {
+            this.tremoloLFOs.forEach(({ lfo }) => {
+                try {
+                    lfo.stop();
+                } catch (e) {}
+            });
+            this.tremoloLFOs = [];
+        }
         
         // Stop oscillators
         this.oscillators.forEach(osc => {
@@ -399,7 +427,7 @@ class EnvironmentalAudioEngine {
         this.isRunning = false;
     }
     
-    setEnvironmentalData(lat, lon, speed, temp, humidity, heading, timeOfDay) {
+    setEnvironmentalData(lat, lon, speed, temp, humidity, heading, timeOfDay, populationDensity = 0.5, trafficDensity = 0.0) {
         this.latitude = lat;
         this.longitude = lon;
         this.speed = speed;
@@ -407,6 +435,8 @@ class EnvironmentalAudioEngine {
         this.humidity = humidity;
         this.heading = heading;
         this.timeOfDay = timeOfDay;
+        this.populationDensity = populationDensity;
+        this.trafficDensity = trafficDensity;
         
         this.updateFrequencies();
     }
@@ -501,6 +531,9 @@ class EnvironmentalAudioEngine {
         // Get scale tones based on compass and selected scale
         const compassTones = this.getScaleTones();
         
+        // Check if heading has changed significantly (more than 5 degrees)
+        const headingChanged = Math.abs(this.heading - this.lastHeading) > 5;
+        
         // Determine if we use multipliers (low fund) or divisors (high fund)
         const useSubharmonics = this.fundamentalFreq > 200; // Lowered from 1000 - more likely to use subharmonics
         
@@ -553,8 +586,23 @@ class EnvironmentalAudioEngine {
                 }
             }
             
-            this.setOscillatorFrequency(oscIdx, harmonic);
+            // STAGGERED UPDATES: If heading changed, queue updates with delays
+            if (headingChanged) {
+                // Each oscillator updates with increasing delay (200ms stagger per osc)
+                const delay = i * 250; // 250ms between each oscillator (0-1250ms total)
+                setTimeout(() => {
+                    if (this.isRunning) {
+                        this.setOscillatorFrequency(oscIdx, harmonic);
+                    }
+                }, delay);
+            } else {
+                // No heading change - update immediately
+                this.setOscillatorFrequency(oscIdx, harmonic);
+            }
         });
+        
+        // Update last heading for next comparison
+        this.lastHeading = this.heading;
         
         // Oscillator 3: Direct speed control (independent of fundamental)
         const speedNorm = Math.min(this.speed / 35.8, 1);
@@ -588,11 +636,26 @@ class EnvironmentalAudioEngine {
         
         // Apply panning to all oscillators with slight variations
         this.panners.forEach((panner, i) => {
-            // Each oscillator gets slightly offset pan for stereo width
-            const offset = (i - 3.5) * 0.05; // -0.175 to +0.175
+            // Population density affects stereo spread (cohesion)
+            // High density (urban) = narrow stereo (individual/distinct tones)
+            // Low density (rural) = wide stereo (cohesive chordal groups)
+            const densitySpread = 1.0 - (this.populationDensity * 0.7); // 1.0 (rural) to 0.3 (urban)
+            
+            // Each oscillator gets offset scaled by population density
+            const baseOffset = (i - 3.5) * 0.05; // -0.175 to +0.175
+            const offset = baseOffset * densitySpread;
             const finalPan = Math.max(-0.8, Math.min(0.8, panPosition + offset));
             panner.pan.value = finalPan;
         });
+        
+        // Update tremolo based on traffic density
+        // High traffic = staccato tremolo effect
+        if (this.tremoloLFOs) {
+            const tremoloDepth = this.trafficDensity * 0.4; // 0 to 40% amplitude modulation
+            this.tremoloLFOs.forEach(({ gain }) => {
+                gain.gain.value = tremoloDepth;
+            });
+        }
         
         // Notify UI
         if (this.onFrequencyUpdate) {
