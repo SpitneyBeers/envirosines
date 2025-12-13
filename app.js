@@ -378,10 +378,8 @@ async function fetchPopulationDensity() {
 }
 
 function updateTrafficDensity() {
-    // Simulate traffic density based on:
-    // 1. Speed changes (rapid deceleration = traffic)
-    // 2. Time of day (rush hours)
-    // 3. Population density (urban areas have more traffic)
+    // Simulate traffic density based on speed and time
+    // Keeping this for potential future use (could affect other parameters)
     
     const speedMph = currentData.speed * 2.237; // m/s to mph
     const hour = new Date().getHours();
@@ -401,8 +399,6 @@ function updateTrafficDensity() {
         speedFactor + 
         (currentData.populationDensity * 0.2) // Urban baseline
     );
-    
-    console.log(`Traffic density: ${currentData.trafficDensity.toFixed(2)}`);
 }
 
 async function fetchWeather() {

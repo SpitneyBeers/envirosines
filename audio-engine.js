@@ -105,20 +105,6 @@ class EnvironmentalAudioEngine {
             // Initialize panner (will be controlled by compass)
             panner.pan.value = 0; // Center
             
-            // Create tremolo LFO for traffic density (amplitude modulation)
-            const tremoloLFO = this.audioContext.createOscillator();
-            const tremoloGain = this.audioContext.createGain();
-            tremoloLFO.frequency.value = 8; // 8 Hz tremolo rate (staccato)
-            tremoloGain.gain.value = 0; // Will be controlled by traffic density
-            
-            tremoloLFO.connect(tremoloGain);
-            tremoloGain.connect(gainNode.gain); // Modulate amplitude
-            tremoloLFO.start();
-            
-            // Store tremolo for later control
-            if (!this.tremoloLFOs) this.tremoloLFOs = [];
-            this.tremoloLFOs.push({ lfo: tremoloLFO, gain: tremoloGain });
-            
             oscillator.type = this.waveform; // Use selected waveform
             oscillator.frequency.value = 200;
             
@@ -364,12 +350,21 @@ class EnvironmentalAudioEngine {
         const organicDuration = Math.max(0.01, duration + irregularity);
         
         // Minimal amplitude flutter (extremely subtle)
-        const flutter = (Math.random() - 0.5) * 0.001; // ±0.1% volume variation (reduced from 0.5%)
+        const flutter = (Math.random() - 0.5) * 0.001; // ±0.1% volume variation
         const organicVolume = targetVolume * (1 + flutter);
+        
+        // POPULATION DENSITY AFFECTS ENVELOPE SHAPE
+        // Urban (high density): normal attack, normal decay
+        // Rural (low density): REVERSE - gradual attack, instant cutoff
+        
+        // Scale attack time by population density inversely
+        // Rural = very slow attack (reverse effect), Urban = normal fast attack
+        const reverseAttackMultiplier = 1 + (1 - this.populationDensity) * 4; // 1x (urban) to 5x (rural)
+        const finalDuration = organicDuration * reverseAttackMultiplier;
         
         gainNode.gain.cancelScheduledValues(now);
         gainNode.gain.setValueAtTime(0, now);
-        gainNode.gain.linearRampToValueAtTime(organicVolume, now + organicDuration);
+        gainNode.gain.linearRampToValueAtTime(organicVolume, now + finalDuration);
     }
     
     fadeOut(oscIndex, duration) {
@@ -377,13 +372,31 @@ class EnvironmentalAudioEngine {
         const now = this.audioContext.currentTime;
         const gainNode = this.gainNodes[oscIndex];
         
-        // Add slight irregularity to release
-        const irregularity = (Math.random() - 0.5) * 0.02;
-        const organicDuration = Math.max(0.01, duration + irregularity);
+        // POPULATION DENSITY AFFECTS ENVELOPE SHAPE
+        // Urban (high density): normal gradual fadeout
+        // Rural (low density): INSTANT CUTOFF (no decay, hard stop)
         
-        gainNode.gain.cancelScheduledValues(now);
-        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-        gainNode.gain.linearRampToValueAtTime(0, now + organicDuration);
+        // Rural areas get near-instant cutoff
+        const ruralCutoff = this.populationDensity < 0.3; // Very rural
+        
+        if (ruralCutoff) {
+            // INSTANT CUTOFF for rural areas (reverse effect)
+            gainNode.gain.cancelScheduledValues(now);
+            gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.001); // 1ms hard stop
+        } else {
+            // Normal fadeout for urban areas, scaled by density
+            const irregularity = (Math.random() - 0.5) * 0.02;
+            const organicDuration = Math.max(0.01, duration + irregularity);
+            
+            // Urban = longer fadeout, Rural = shorter
+            const fadeMultiplier = this.populationDensity; // 0.3-1.0
+            const finalDuration = organicDuration * fadeMultiplier;
+            
+            gainNode.gain.cancelScheduledValues(now);
+            gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+            gainNode.gain.linearRampToValueAtTime(0, now + finalDuration);
+        }
     }
     
     stop() {
@@ -392,16 +405,6 @@ class EnvironmentalAudioEngine {
         // Clear sporadic timers
         this.sporadicTimers.forEach(timer => clearTimeout(timer));
         this.sporadicTimers = [];
-        
-        // Stop tremolo LFOs
-        if (this.tremoloLFOs) {
-            this.tremoloLFOs.forEach(({ lfo }) => {
-                try {
-                    lfo.stop();
-                } catch (e) {}
-            });
-            this.tremoloLFOs = [];
-        }
         
         // Stop oscillators
         this.oscillators.forEach(osc => {
@@ -647,15 +650,6 @@ class EnvironmentalAudioEngine {
             const finalPan = Math.max(-0.8, Math.min(0.8, panPosition + offset));
             panner.pan.value = finalPan;
         });
-        
-        // Update tremolo based on traffic density
-        // High traffic = staccato tremolo effect
-        if (this.tremoloLFOs) {
-            const tremoloDepth = this.trafficDensity * 0.4; // 0 to 40% amplitude modulation
-            this.tremoloLFOs.forEach(({ gain }) => {
-                gain.gain.value = tremoloDepth;
-            });
-        }
         
         // Notify UI
         if (this.onFrequencyUpdate) {
