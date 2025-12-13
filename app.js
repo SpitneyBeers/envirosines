@@ -200,7 +200,7 @@ function toggleMode() {
 }
 
 function toggleWaveform() {
-    const waveforms = ['sine', 'triangle', 'sawtooth'];
+    const waveforms = ['sine', 'triangle', 'sawtooth', 'square'];
     const currentIndex = waveforms.indexOf(audioEngine.waveform);
     const nextIndex = (currentIndex + 1) % waveforms.length;
     const newWaveform = waveforms[nextIndex];
