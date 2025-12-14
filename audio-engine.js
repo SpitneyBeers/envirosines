@@ -137,6 +137,12 @@ class EnvironmentalAudioEngine {
             this.panners.push(panner);
         }
         
+        // Traffic glissando oscillator - DISABLED for testing
+        // (Was creating harsh tone even when supposed to be silent)
+        this.trafficOscillator = null;
+        this.trafficGain = null;
+        
+        /*
         // Create dedicated traffic glissando oscillator (dissonant element)
         this.trafficOscillator = this.audioContext.createOscillator();
         this.trafficGain = this.audioContext.createGain();
@@ -151,6 +157,7 @@ class EnvironmentalAudioEngine {
         this.trafficGain.connect(this.wetGain);
         
         this.trafficOscillator.start();
+        */
         
         this.isRunning = true;
         this.updateFrequencies();
@@ -627,19 +634,8 @@ class EnvironmentalAudioEngine {
                 }
             }
             
-            // STAGGERED UPDATES: If heading changed, queue updates with delays
-            if (headingChanged) {
-                // Each oscillator updates with increasing delay (200ms stagger per osc)
-                const delay = i * 250; // 250ms between each oscillator (0-1250ms total)
-                setTimeout(() => {
-                    if (this.isRunning) {
-                        this.setOscillatorFrequency(oscIdx, harmonic);
-                    }
-                }, delay);
-            } else {
-                // No heading change - update immediately
-                this.setOscillatorFrequency(oscIdx, harmonic);
-            }
+            // Update frequency immediately for all oscillators
+            this.setOscillatorFrequency(oscIdx, harmonic);
         });
         
         // Update last heading for next comparison
@@ -873,7 +869,7 @@ class EnvironmentalAudioEngine {
         osc.frequency.setValueAtTime(osc.frequency.value, now);
         osc.frequency.exponentialRampToValueAtTime(
             Math.max(20, Math.min(20000, organicFreq)),
-            now + 0.1
+            now + 2.0  // 2 second smooth glide (was 0.1s which created stepping)
         );
     }
 }
