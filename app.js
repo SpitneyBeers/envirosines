@@ -200,16 +200,21 @@ function toggleMode() {
 }
 
 function toggleWaveform() {
-    const waveforms = ['sine', 'triangle', 'sawtooth', 'square'];
+    const waveforms = ['sine', 'triangle', 'sawtooth', 'roundpm'];
     const currentIndex = waveforms.indexOf(audioEngine.waveform);
     const nextIndex = (currentIndex + 1) % waveforms.length;
     const newWaveform = waveforms[nextIndex];
     
     audioEngine.setWaveform(newWaveform);
     
-    // Update button text with capitalized name
-    const displayName = newWaveform.charAt(0).toUpperCase() + newWaveform.slice(1);
-    waveformBtn.textContent = `Wave: ${displayName}`;
+    // Update button text with display name
+    const displayNames = {
+        'sine': 'Sine',
+        'triangle': 'Triangle', 
+        'sawtooth': 'Sawtooth',
+        'roundpm': 'RoundPM'
+    };
+    waveformBtn.textContent = `Wave: ${displayNames[newWaveform]}`;
 }
 
 function changeScale() {

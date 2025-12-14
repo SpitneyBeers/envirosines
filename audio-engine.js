@@ -47,6 +47,10 @@ class EnvironmentalAudioEngine {
         this.lastHeading = 0;
         this.pendingFrequencyUpdates = []; // Queue of oscillators waiting to update
         
+        // Traffic glissando oscillator (dissonant element)
+        this.trafficOscillator = null;
+        this.trafficGain = null;
+        
         this.onFrequencyUpdate = null;
     }
     
@@ -133,6 +137,21 @@ class EnvironmentalAudioEngine {
             this.panners.push(panner);
         }
         
+        // Create dedicated traffic glissando oscillator (dissonant element)
+        this.trafficOscillator = this.audioContext.createOscillator();
+        this.trafficGain = this.audioContext.createGain();
+        
+        this.trafficOscillator.type = 'sawtooth'; // Harsh, dissonant waveform
+        this.trafficOscillator.frequency.value = 100; // Starting frequency
+        this.trafficGain.gain.value = 0; // Start silent
+        
+        // Route through reverb for atmosphere
+        this.trafficOscillator.connect(this.trafficGain);
+        this.trafficGain.connect(this.dryGain);
+        this.trafficGain.connect(this.wetGain);
+        
+        this.trafficOscillator.start();
+        
         this.isRunning = true;
         this.updateFrequencies();
         
@@ -179,12 +198,22 @@ class EnvironmentalAudioEngine {
     }
     
     setWaveform(waveform) {
-        // Switch between 'sine', 'triangle', 'sawtooth'
+        // Switch between 'sine', 'triangle', 'sawtooth', 'roundpm'
         this.waveform = waveform;
         
         // Update all oscillator types
         this.oscillators.forEach(osc => {
-            osc.type = waveform;
+            if (waveform === 'roundpm') {
+                // Create custom PeriodicWave for rounded pulse-width modulation
+                // Combines fundamental with harmonics to create rounded square-ish wave
+                const real = new Float32Array([0, 0.8, 0, 0.3, 0, 0.15, 0, 0.08, 0, 0.05]);
+                const imag = new Float32Array(real.length);
+                const wave = this.audioContext.createPeriodicWave(real, imag);
+                osc.setPeriodicWave(wave);
+            } else {
+                // Standard waveforms
+                osc.type = waveform;
+            }
         });
     }
     
@@ -204,7 +233,7 @@ class EnvironmentalAudioEngine {
         let interval, duration, fadeIn, fadeOut;
         
         if (this.mode === 'pulse') {
-            // PULSE MODE: Short, sharp bursts, slower rate (renamed from percussive)
+            // PULSE MODE: Short, sharp bursts
             duration = 50 + Math.random() * 250; // 50-300ms
             fadeIn = (20 + Math.random() * 60) / 1000; // 20-80ms attack
             fadeOut = (10 + Math.random() * 40) / 1000; // 10-50ms release
@@ -212,13 +241,13 @@ class EnvironmentalAudioEngine {
             // ALL oscillators respond to speed for density
             const speedNorm = Math.min(this.speed / 35.8, 1);
             if (isSpeedOscillator) {
-                const minInterval = 10000 - (speedNorm * 9500); // 10s to 0.5s
-                const maxInterval = 20000 - (speedNorm * 19000); // 20s to 1s
+                const minInterval = 4000 - (speedNorm * 3500); // 4s to 0.5s
+                const maxInterval = 8000 - (speedNorm * 7000); // 8s to 1s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
                 // All other oscillators also speed-controlled for density
-                const minInterval = 4000 - (speedNorm * 3000); // 4s to 1s
-                const maxInterval = 10000 - (speedNorm * 8000); // 10s to 2s
+                const minInterval = 2000 - (speedNorm * 1500); // 2s to 0.5s
+                const maxInterval = 4000 - (speedNorm * 3000); // 4s to 1s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         } else if (this.mode === 'bell') {
@@ -230,13 +259,13 @@ class EnvironmentalAudioEngine {
             // ALL oscillators respond to speed for density
             const speedNorm = Math.min(this.speed / 35.8, 1);
             if (isSpeedOscillator) {
-                const minInterval = 8000 - (speedNorm * 7000); // 8s to 1s
-                const maxInterval = 15000 - (speedNorm * 13000); // 15s to 2s
+                const minInterval = 3000 - (speedNorm * 2500); // 3s to 0.5s
+                const maxInterval = 6000 - (speedNorm * 5000); // 6s to 1s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
                 // All other oscillators also speed-controlled for density
-                const minInterval = 6000 - (speedNorm * 4500); // 6s to 1.5s
-                const maxInterval = 12000 - (speedNorm * 9000); // 12s to 3s
+                const minInterval = 2000 - (speedNorm * 1500); // 2s to 0.5s
+                const maxInterval = 4000 - (speedNorm * 3000); // 4s to 1s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         } else {
@@ -248,13 +277,13 @@ class EnvironmentalAudioEngine {
             // ALL oscillators respond to speed for density
             const speedNorm = Math.min(this.speed / 35.8, 1);
             if (isSpeedOscillator) {
-                const minInterval = 12000 - (speedNorm * 10000); // 12s to 2s
-                const maxInterval = 20000 - (speedNorm * 16000); // 20s to 4s
+                const minInterval = 5000 - (speedNorm * 4000); // 5s to 1s
+                const maxInterval = 8000 - (speedNorm * 6000); // 8s to 2s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
                 // All other oscillators also speed-controlled for density
-                const minInterval = 8000 - (speedNorm * 6000); // 8s to 2s
-                const maxInterval = 16000 - (speedNorm * 12000); // 16s to 4s
+                const minInterval = 3000 - (speedNorm * 2000); // 3s to 1s
+                const maxInterval = 6000 - (speedNorm * 4000); // 6s to 2s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         }
@@ -405,6 +434,15 @@ class EnvironmentalAudioEngine {
         // Clear sporadic timers
         this.sporadicTimers.forEach(timer => clearTimeout(timer));
         this.sporadicTimers = [];
+        
+        // Stop traffic glissando oscillator
+        if (this.trafficOscillator) {
+            try {
+                this.trafficOscillator.stop();
+            } catch (e) {}
+            this.trafficOscillator = null;
+            this.trafficGain = null;
+        }
         
         // Stop oscillators
         this.oscillators.forEach(osc => {
@@ -650,6 +688,51 @@ class EnvironmentalAudioEngine {
             const finalPan = Math.max(-0.8, Math.min(0.8, panPosition + offset));
             panner.pan.value = finalPan;
         });
+        
+        // TRAFFIC DENSITY → DISSONANT GLISSANDO
+        if (this.trafficOscillator && this.trafficGain) {
+            const now = this.audioContext.currentTime;
+            
+            if (this.trafficDensity > 0.1) {
+                // Traffic present - activate glissando
+                
+                // Volume based on traffic density
+                const targetVolume = this.trafficDensity * 0.03; // Subtle, max 3% volume
+                this.trafficGain.gain.cancelScheduledValues(now);
+                this.trafficGain.gain.setValueAtTime(this.trafficGain.gain.value, now);
+                this.trafficGain.gain.linearRampToValueAtTime(targetVolume, now + 0.5);
+                
+                // Glissando rate based on traffic density
+                // Low traffic = moderate rise (dissonant but bearable)
+                // High traffic = VERY SLOW rise (excruciating dissonance)
+                const riseTime = 8 + (this.trafficDensity * 22); // 8s (low) to 30s (high)
+                
+                // Target frequency: dissonant interval from fundamental
+                // Minor 2nd (semitone) = very dissonant
+                const targetFreq = this.fundamentalFreq * 1.059; // Semitone above fundamental
+                
+                // Start from fundamental and gliss up
+                this.trafficOscillator.frequency.cancelScheduledValues(now);
+                this.trafficOscillator.frequency.setValueAtTime(this.fundamentalFreq, now);
+                this.trafficOscillator.frequency.linearRampToValueAtTime(targetFreq, now + riseTime);
+                
+                // After reaching target, gliss back down and repeat
+                setTimeout(() => {
+                    if (this.isRunning && this.trafficDensity > 0.1) {
+                        const futureNow = this.audioContext.currentTime;
+                        this.trafficOscillator.frequency.cancelScheduledValues(futureNow);
+                        this.trafficOscillator.frequency.setValueAtTime(targetFreq, futureNow);
+                        this.trafficOscillator.frequency.linearRampToValueAtTime(this.fundamentalFreq, futureNow + riseTime);
+                    }
+                }, riseTime * 1000);
+                
+            } else {
+                // No traffic - fade out glissando
+                this.trafficGain.gain.cancelScheduledValues(now);
+                this.trafficGain.gain.setValueAtTime(this.trafficGain.gain.value, now);
+                this.trafficGain.gain.linearRampToValueAtTime(0, now + 2);
+            }
+        }
         
         // Notify UI
         if (this.onFrequencyUpdate) {
