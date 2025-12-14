@@ -205,7 +205,7 @@ class EnvironmentalAudioEngine {
     }
     
     setWaveform(waveform) {
-        // Switch between 'sine', 'triangle', 'sawtooth', 'roundpm'
+        // Switch between waveforms: sine, triangle, sawtooth, roundpm, cello, organ
         this.waveform = waveform;
         
         // Update all oscillator types
@@ -214,6 +214,53 @@ class EnvironmentalAudioEngine {
                 // Create custom PeriodicWave for rounded pulse-width modulation
                 // Combines fundamental with harmonics to create rounded square-ish wave
                 const real = new Float32Array([0, 0.8, 0, 0.3, 0, 0.15, 0, 0.08, 0, 0.05]);
+                const imag = new Float32Array(real.length);
+                const wave = this.audioContext.createPeriodicWave(real, imag);
+                osc.setPeriodicWave(wave);
+            } else if (waveform === 'cello') {
+                // CELLO-LIKE: Rich odd harmonics with emphasized 3rd/5th for bowed string character
+                // Cello has strong fundamental + prominent odd harmonics
+                const real = new Float32Array([
+                    0,      // DC offset
+                    1.0,    // Fundamental (strong)
+                    0.4,    // 2nd harmonic (moderate)
+                    0.7,    // 3rd harmonic (emphasized - cello characteristic)
+                    0.2,    // 4th
+                    0.5,    // 5th harmonic (emphasized)
+                    0.15,   // 6th
+                    0.3,    // 7th (odd harmonic)
+                    0.1,    // 8th
+                    0.2,    // 9th (odd)
+                    0.08,   // 10th
+                    0.15,   // 11th
+                    0.05,   // 12th
+                    0.1     // 13th
+                ]);
+                const imag = new Float32Array(real.length);
+                const wave = this.audioContext.createPeriodicWave(real, imag);
+                osc.setPeriodicWave(wave);
+            } else if (waveform === 'organ') {
+                // PIPE ORGAN: Even harmonic series with 8', 4', 2' stops simulation
+                // Pipe organs emphasize specific harmonic ratios (organ stops)
+                const real = new Float32Array([
+                    0,      // DC offset
+                    1.0,    // 8' fundamental
+                    0.7,    // 2nd (4' stop - octave)
+                    0.3,    // 3rd (mutation)
+                    0.8,    // 4th (2' stop - two octaves)
+                    0.2,    // 5th
+                    0.4,    // 6th
+                    0.15,   // 7th
+                    0.6,    // 8th (1' stop - three octaves)
+                    0.1,    // 9th
+                    0.3,    // 10th
+                    0.08,   // 11th
+                    0.2,    // 12th
+                    0.05,   // 13th
+                    0.15,   // 14th
+                    0.03,   // 15th
+                    0.4     // 16th (mixtures)
+                ]);
                 const imag = new Float32Array(real.length);
                 const wave = this.audioContext.createPeriodicWave(real, imag);
                 osc.setPeriodicWave(wave);
