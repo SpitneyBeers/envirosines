@@ -386,9 +386,9 @@ class EnvironmentalAudioEngine {
         // Urban (high density): normal attack, normal decay
         // Rural (low density): REVERSE - gradual attack, instant cutoff
         
-        // Scale attack time by population density inversely
-        // Rural = very slow attack (reverse effect), Urban = normal fast attack
-        const reverseAttackMultiplier = 1 + (1 - this.populationDensity) * 4; // 1x (urban) to 5x (rural)
+        // Scale attack time by population density inversely (REDUCED multiplier)
+        // Rural = slower attack (reverse effect), Urban = normal fast attack
+        const reverseAttackMultiplier = 1 + (1 - this.populationDensity) * 2; // 1x (urban) to 3x (rural) - was 5x
         const finalDuration = organicDuration * reverseAttackMultiplier;
         
         gainNode.gain.cancelScheduledValues(now);
