@@ -269,21 +269,21 @@ class EnvironmentalAudioEngine {
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         } else {
-            // DRONE MODE: Longer, sustained tones
-            duration = 1000 + Math.random() * 5000; // 1-6 seconds
-            fadeIn = 0.2 + Math.random() * 0.5; // 0.2-0.7s
-            fadeOut = 0.3 + Math.random() * 1.0; // 0.3-1.3s
+            // DRONE MODE: Longer, sustained tones with significant overlap
+            duration = 3000 + Math.random() * 6000; // 3-9 seconds (was 1-6s)
+            fadeIn = 0.5 + Math.random() * 1.0; // 0.5-1.5s (was 0.2-0.7s)
+            fadeOut = 1.0 + Math.random() * 2.0; // 1.0-3.0s (was 0.3-1.3s)
             
             // ALL oscillators respond to speed for density
             const speedNorm = Math.min(this.speed / 35.8, 1);
             if (isSpeedOscillator) {
-                const minInterval = 5000 - (speedNorm * 4000); // 5s to 1s
-                const maxInterval = 8000 - (speedNorm * 6000); // 8s to 2s
+                const minInterval = 8000 - (speedNorm * 6000); // 8s to 2s (was 5s to 1s)
+                const maxInterval = 12000 - (speedNorm * 8000); // 12s to 4s (was 8s to 2s)
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
                 // All other oscillators also speed-controlled for density
-                const minInterval = 3000 - (speedNorm * 2000); // 3s to 1s
-                const maxInterval = 6000 - (speedNorm * 4000); // 6s to 2s
+                const minInterval = 6000 - (speedNorm * 4000); // 6s to 2s (was 3s to 1s)
+                const maxInterval = 10000 - (speedNorm * 6000); // 10s to 4s (was 6s to 2s)
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         }
@@ -531,8 +531,8 @@ class EnvironmentalAudioEngine {
             // Pulse: much wider range, scale up for variation
             fundamentalFreq = baseFreq * (Math.random() * 10 + 1); // 440Hz-4840Hz range with variation
         } else if (this.mode === 'bell') {
-            // Bell: higher frequencies for metallic bell tones
-            fundamentalFreq = baseFreq * (Math.random() * 6 + 3); // 1320Hz-3960Hz range (higher)
+            // Bell: lower frequencies for deeper bell tones (2 octaves down from original)
+            fundamentalFreq = baseFreq * (Math.random() * 1.5 + 0.75); // 330Hz-990Hz range (was 1320Hz-3960Hz)
         } else {
             // Drone: keep closer to pure A tuning, slight range for interest
             fundamentalFreq = baseFreq * (Math.random() * 0.5 + 0.75); // ~330Hz-660Hz from base A440
@@ -610,11 +610,11 @@ class EnvironmentalAudioEngine {
                     harmonic = harmonic * 4.0; // Up two octaves
                 }
             } else if (this.mode === 'bell') {
-                // Bell: concentrate in upper harmonics for metallic sound
+                // Bell: keep harmonics lower (removed upward octave shifts)
                 if (oscIdx <= 2) {
-                    harmonic = harmonic * 2.0; // Up one octave
+                    harmonic = harmonic * 1.0; // Normal pitch (was ×2 up one octave)
                 } else if (oscIdx >= 5) {
-                    harmonic = harmonic * 8.0; // Up three octaves (very high, bell-like)
+                    harmonic = harmonic * 2.0; // Up one octave (was ×8 up three octaves)
                 }
             } else {
                 // Drone mode: spread spectrum more - normal bass AND high shimmer
@@ -693,11 +693,11 @@ class EnvironmentalAudioEngine {
         if (this.trafficOscillator && this.trafficGain) {
             const now = this.audioContext.currentTime;
             
-            if (this.trafficDensity > 0.1) {
-                // Traffic present - activate glissando
+            if (this.trafficDensity > 0.3) {
+                // Traffic present (only activate at moderate traffic or higher)
                 
-                // Volume based on traffic density
-                const targetVolume = this.trafficDensity * 0.03; // Subtle, max 3% volume
+                // Volume based on traffic density (MUCH more subtle)
+                const targetVolume = this.trafficDensity * 0.01; // Very subtle, max 1% volume (was 3%)
                 this.trafficGain.gain.cancelScheduledValues(now);
                 this.trafficGain.gain.setValueAtTime(this.trafficGain.gain.value, now);
                 this.trafficGain.gain.linearRampToValueAtTime(targetVolume, now + 0.5);
@@ -727,10 +727,10 @@ class EnvironmentalAudioEngine {
                 }, riseTime * 1000);
                 
             } else {
-                // No traffic - fade out glissando
+                // Low/no traffic - fade out glissando quickly
                 this.trafficGain.gain.cancelScheduledValues(now);
                 this.trafficGain.gain.setValueAtTime(this.trafficGain.gain.value, now);
-                this.trafficGain.gain.linearRampToValueAtTime(0, now + 2);
+                this.trafficGain.gain.linearRampToValueAtTime(0, now + 1); // Faster fadeout (1s)
             }
         }
         
