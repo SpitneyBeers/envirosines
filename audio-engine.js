@@ -364,6 +364,8 @@ class EnvironmentalAudioEngine {
             fadeIn = (1 + Math.random() * 4) / 1000; // 1-5ms instant attack (bell strike)
             fadeOut = 0.7 + Math.random() * 1.2; // 0.7-1.9s long decay (bell ring)
             
+            console.log(`BELL MODE - Osc ${oscIndex}: duration=${duration}ms, fadeIn=${fadeIn}s, fadeOut=${fadeOut}s`);
+            
             // ALL oscillators respond to speed for density
             const speedNorm = Math.min(this.speed / 35.8, 1);
             if (isSpeedOscillator) {
@@ -376,6 +378,7 @@ class EnvironmentalAudioEngine {
                 const maxInterval = 4000 - (speedNorm * 3000); // 4s to 1s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
+            console.log(`BELL MODE - Osc ${oscIndex}: interval=${interval}ms (will fire in ${interval/1000}s)`);
         } else {
             // DRONE MODE: Longer, sustained tones with significant overlap
             duration = 3000 + Math.random() * 6000; // 3-9 seconds (was 1-6s)
@@ -410,11 +413,17 @@ class EnvironmentalAudioEngine {
             } else if (this.mode === 'bell') {
                 targetVolume = 0.15; // Was 0.10, now 1.5x louder
                 
+                console.log(`BELL - Osc ${oscIndex}: base volume = 0.15`);
+                
                 // Reduce volume for upper register oscillators (less shrill)
                 if (oscIndex >= 5) {
                     targetVolume *= 0.6; // Less reduction
+                    console.log(`BELL - Osc ${oscIndex}: upper register, volume = ${targetVolume}`);
                 } else if (oscIndex === 4) {
                     targetVolume *= 0.8; // Less reduction
+                    console.log(`BELL - Osc ${oscIndex}: mid register, volume = ${targetVolume}`);
+                } else {
+                    console.log(`BELL - Osc ${oscIndex}: lower register, volume = ${targetVolume}`);
                 }
             } else {
                 targetVolume = 0.10; // Drone - was 0.04, now 2.5x louder
@@ -463,6 +472,7 @@ class EnvironmentalAudioEngine {
                 clickSource.start(now);
             }
             
+            console.log(`BELL - Osc ${oscIndex}: calling fadeIn with duration=${fadeInSec}s, volume=${targetVolume}`);
             this.fadeIn(oscIndex, fadeInSec, targetVolume);
             
             setTimeout(() => {
