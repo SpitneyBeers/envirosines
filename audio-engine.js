@@ -358,27 +358,20 @@ class EnvironmentalAudioEngine {
                 const maxInterval = 4000 - (speedNorm * 3000); // 4s to 1s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
-        } else if (this.mode === 'bell') {
-            // BELL MODE: Very short, sharp attacks with long decay (tuned bells)
-            duration = 800 + Math.random() * 1200; // 0.8-2 seconds total
-            fadeIn = (1 + Math.random() * 4) / 1000; // 1-5ms instant attack (bell strike)
-            fadeOut = 0.7 + Math.random() * 1.2; // 0.7-1.9s long decay (bell ring)
+        } else if (this.mode === 'chord') {
+            // CHORD MODE: All oscillators play together as sustained chords
+            duration = 4000 + Math.random() * 4000; // 4-8 seconds sustained
+            fadeIn = 0.8 + Math.random() * 0.7; // 0.8-1.5s slow attack
+            fadeOut = 1.5 + Math.random() * 1.5; // 1.5-3s long decay
             
-            console.log(`BELL MODE - Osc ${oscIndex}: duration=${duration}ms, fadeIn=${fadeIn}s, fadeOut=${fadeOut}s`);
-            
-            // ALL oscillators respond to speed for density
+            // All oscillators fire together - synchronized intervals
             const speedNorm = Math.min(this.speed / 35.8, 1);
-            if (isSpeedOscillator) {
-                const minInterval = 3000 - (speedNorm * 2500); // 3s to 0.5s
-                const maxInterval = 6000 - (speedNorm * 5000); // 6s to 1s
-                interval = minInterval + Math.random() * (maxInterval - minInterval);
-            } else {
-                // All other oscillators also speed-controlled for density
-                const minInterval = 2000 - (speedNorm * 1500); // 2s to 0.5s
-                const maxInterval = 4000 - (speedNorm * 3000); // 4s to 1s
-                interval = minInterval + Math.random() * (maxInterval - minInterval);
-            }
-            console.log(`BELL MODE - Osc ${oscIndex}: interval=${interval}ms (will fire in ${interval/1000}s)`);
+            const minInterval = 8000 - (speedNorm * 6000); // 8s to 2s
+            const maxInterval = 12000 - (speedNorm * 8000); // 12s to 4s
+            interval = minInterval + Math.random() * (maxInterval - minInterval);
+            
+            // Add slight randomization so not perfectly locked (more organic)
+            interval += (Math.random() - 0.5) * 500; // ±250ms variation
         } else {
             // DRONE MODE: Longer, sustained tones with significant overlap
             duration = 3000 + Math.random() * 6000; // 3-9 seconds (was 1-6s)
@@ -410,21 +403,8 @@ class EnvironmentalAudioEngine {
             let targetVolume;
             if (this.mode === 'pulse') {
                 targetVolume = 0.08; // Was 0.035, now 2.3x louder
-            } else if (this.mode === 'bell') {
-                targetVolume = 0.15; // Was 0.10, now 1.5x louder
-                
-                console.log(`BELL - Osc ${oscIndex}: base volume = 0.15`);
-                
-                // Reduce volume for upper register oscillators (less shrill)
-                if (oscIndex >= 5) {
-                    targetVolume *= 0.6; // Less reduction
-                    console.log(`BELL - Osc ${oscIndex}: upper register, volume = ${targetVolume}`);
-                } else if (oscIndex === 4) {
-                    targetVolume *= 0.8; // Less reduction
-                    console.log(`BELL - Osc ${oscIndex}: mid register, volume = ${targetVolume}`);
-                } else {
-                    console.log(`BELL - Osc ${oscIndex}: lower register, volume = ${targetVolume}`);
-                }
+            } else if (this.mode === 'chord') {
+                targetVolume = 0.12; // Full chord presence
             } else {
                 targetVolume = 0.10; // Drone - was 0.04, now 2.5x louder
             }
@@ -445,34 +425,6 @@ class EnvironmentalAudioEngine {
                 }
             }
             
-            // BELL MODE: Add sharp click at start for percussive attack
-            if (this.mode === 'bell') {
-                // Create white noise buffer for click
-                const clickDuration = 0.005; // 5ms click
-                const sampleRate = this.audioContext.sampleRate;
-                const clickBuffer = this.audioContext.createBuffer(1, sampleRate * clickDuration, sampleRate);
-                const clickData = clickBuffer.getChannelData(0);
-                
-                // Generate short burst of noise for click
-                for (let i = 0; i < clickData.length; i++) {
-                    const decay = 1 - (i / clickData.length); // Quick decay
-                    clickData[i] = (Math.random() * 2 - 1) * decay * 0.3; // Quiet click
-                }
-                
-                // Play click through separate buffer source
-                const clickSource = this.audioContext.createBufferSource();
-                const clickGain = this.audioContext.createGain();
-                clickSource.buffer = clickBuffer;
-                clickGain.gain.value = targetVolume * 0.5; // Click at 50% of tone volume
-                
-                clickSource.connect(clickGain);
-                clickGain.connect(this.dryGain);
-                clickGain.connect(this.wetGain);
-                
-                clickSource.start(now);
-            }
-            
-            console.log(`BELL - Osc ${oscIndex}: calling fadeIn with duration=${fadeInSec}s, volume=${targetVolume}`);
             this.fadeIn(oscIndex, fadeInSec, targetVolume);
             
             setTimeout(() => {
@@ -648,9 +600,9 @@ class EnvironmentalAudioEngine {
         if (this.mode === 'pulse') {
             // Pulse: much wider range, scale up for variation
             fundamentalFreq = baseFreq * (Math.random() * 10 + 1); // 440Hz-4840Hz range with variation
-        } else if (this.mode === 'bell') {
-            // Bell: lower frequencies for deeper bell tones (2 octaves down from original)
-            fundamentalFreq = baseFreq * (Math.random() * 1.5 + 0.75); // 330Hz-990Hz range (was 1320Hz-3960Hz)
+        } else if (this.mode === 'chord') {
+            // Chord: mid-range frequencies for rich harmonic chords
+            fundamentalFreq = baseFreq * (Math.random() * 0.8 + 0.6); // 264Hz-792Hz range
         } else {
             // Drone: keep closer to pure A tuning, slight range for interest
             fundamentalFreq = baseFreq * (Math.random() * 0.5 + 0.75); // ~330Hz-660Hz from base A440
@@ -727,13 +679,16 @@ class EnvironmentalAudioEngine {
                 else if (oscIdx >= 5) {
                     harmonic = harmonic * 4.0; // Up two octaves
                 }
-            } else if (this.mode === 'bell') {
-                // Bell: keep harmonics lower (removed upward octave shifts)
+            } else if (this.mode === 'chord') {
+                // Chord: full spectrum spread for rich chords
                 if (oscIdx <= 2) {
-                    harmonic = harmonic * 1.0; // Normal pitch (was ×2 up one octave)
-                } else if (oscIdx >= 5) {
-                    harmonic = harmonic * 2.0; // Up one octave (was ×8 up three octaves)
+                    harmonic = harmonic * 0.5; // Down one octave (bass notes)
+                } else if (oscIdx >= 6) {
+                    harmonic = harmonic * 4.0; // Up two octaves (high shimmer)
+                } else if (oscIdx === 5) {
+                    harmonic = harmonic * 2.0; // Up one octave
                 }
+                // Middle oscillators (3, 4) stay at normal pitch
             } else {
                 // Drone mode: spread spectrum more - normal bass AND high shimmer
                 if (oscIdx === 1 || oscIdx === 2) {
