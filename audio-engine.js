@@ -92,7 +92,7 @@ class EnvironmentalAudioEngine {
         
         // Master gain
         this.masterGain = this.audioContext.createGain();
-        this.masterGain.gain.value = 0.8;
+        this.masterGain.gain.value = 1.0; // Max volume (was 0.8)
         
         // Audio chain: oscillators -> gains -> (filters for fund, direct for harmonics) -> dry/wet -> master -> destination
         this.dryGain.connect(this.masterGain);
@@ -168,7 +168,7 @@ class EnvironmentalAudioEngine {
     
     createReverbImpulse() {
         const sampleRate = this.audioContext.sampleRate;
-        const length = sampleRate * 0.875; // Reduced from 1.75s to 0.875s (tighter reverb)
+        const length = sampleRate * 1.5; // Increased from 0.875s to 1.5s (more reverb)
         const impulse = this.audioContext.createBuffer(2, length, sampleRate);
         
         for (let channel = 0; channel < 2; channel++) {
@@ -205,7 +205,7 @@ class EnvironmentalAudioEngine {
     }
     
     setWaveform(waveform) {
-        // Switch between waveforms: sine, triangle, sawtooth, roundpm, cello, organ
+        // Switch between waveforms: sine, triangle, sawtooth, roundpm, cello, organ, oboe, tympani
         this.waveform = waveform;
         
         // Update all oscillator types
@@ -260,6 +260,60 @@ class EnvironmentalAudioEngine {
                     0.15,   // 14th
                     0.03,   // 15th
                     0.4     // 16th (mixtures)
+                ]);
+                const imag = new Float32Array(real.length);
+                const wave = this.audioContext.createPeriodicWave(real, imag);
+                osc.setPeriodicWave(wave);
+            } else if (waveform === 'oboe') {
+                // OBOE: Nasal, reedy double-reed character
+                // Strong odd harmonics (3rd, 5th, 7th) create nasal/reedy timbre
+                // Weak even harmonics, prominent upper partials
+                const real = new Float32Array([
+                    0,      // DC offset
+                    1.0,    // Fundamental
+                    0.2,    // 2nd (weak even)
+                    0.9,    // 3rd (STRONG odd - nasal characteristic)
+                    0.15,   // 4th (weak even)
+                    0.8,    // 5th (STRONG odd - reedy)
+                    0.1,    // 6th
+                    0.7,    // 7th (STRONG odd)
+                    0.08,   // 8th
+                    0.5,    // 9th (strong odd)
+                    0.05,   // 10th
+                    0.4,    // 11th (odd)
+                    0.03,   // 12th
+                    0.3,    // 13th (odd)
+                    0.02,   // 14th
+                    0.2,    // 15th
+                    0.01,   // 16th
+                    0.15,   // 17th (upper partials)
+                    0.01,   // 18th
+                    0.1     // 19th
+                ]);
+                const imag = new Float32Array(real.length);
+                const wave = this.audioContext.createPeriodicWave(real, imag);
+                osc.setPeriodicWave(wave);
+            } else if (waveform === 'tympani') {
+                // TYMPANI: Deep resonant kettledrum
+                // Inharmonic partials typical of drums, strong fundamental
+                // Emphasis on fundamental with quickly decaying upper partials
+                const real = new Float32Array([
+                    0,      // DC offset
+                    1.0,    // Fundamental (VERY strong - drum head)
+                    0.3,    // 2nd (moderate)
+                    0.15,   // 3rd (weak - inharmonic)
+                    0.25,   // 4th (moderate resonance)
+                    0.08,   // 5th (weak)
+                    0.12,   // 6th (slight resonance)
+                    0.05,   // 7th (very weak)
+                    0.08,   // 8th (weak resonance)
+                    0.03,   // 9th
+                    0.05,   // 10th
+                    0.02,   // 11th
+                    0.03,   // 12th
+                    0.01,   // 13th
+                    0.02,   // 14th
+                    0.01    // 15th (minimal upper partials)
                 ]);
                 const imag = new Float32Array(real.length);
                 const wave = this.audioContext.createPeriodicWave(real, imag);
@@ -352,18 +406,18 @@ class EnvironmentalAudioEngine {
             // Volume based on mode
             let targetVolume;
             if (this.mode === 'pulse') {
-                targetVolume = 0.035;
+                targetVolume = 0.08; // Was 0.035, now 2.3x louder
             } else if (this.mode === 'bell') {
-                targetVolume = 0.05; // Slightly louder for bell strikes
+                targetVolume = 0.15; // Was 0.10, now 1.5x louder
                 
                 // Reduce volume for upper register oscillators (less shrill)
                 if (oscIndex >= 5) {
-                    targetVolume *= 0.4; // Upper oscillators much quieter (60% reduction)
+                    targetVolume *= 0.6; // Less reduction
                 } else if (oscIndex === 4) {
-                    targetVolume *= 0.7; // Mid-high quieter (30% reduction)
+                    targetVolume *= 0.8; // Less reduction
                 }
             } else {
-                targetVolume = 0.04; // Drone
+                targetVolume = 0.10; // Drone - was 0.04, now 2.5x louder
             }
             
             // In drone mode, boost lower oscillators for bass presence
@@ -707,10 +761,10 @@ class EnvironmentalAudioEngine {
         
         // Filters now controlled by sun position (see earlier in updateFrequencies)
         
-        // Update reverb wet/dry based on humidity (more subtle now)
+        // Update reverb wet/dry based on humidity (increased reverb)
         const humidityNorm = this.humidity / 100; // 0 to 1
-        this.dryGain.gain.value = 0.95 - (humidityNorm * 0.25); // 0.95 to 0.7 (drier overall)
-        this.wetGain.gain.value = 0.05 + (humidityNorm * 0.30); // 0.05 to 0.35 (max wet halved from 0.7)
+        this.dryGain.gain.value = 0.85 - (humidityNorm * 0.30); // 0.85 to 0.55 (was 0.95 to 0.7)
+        this.wetGain.gain.value = 0.15 + (humidityNorm * 0.45); // 0.15 to 0.60 (was 0.05 to 0.35)
         
         // Update stereo panning based on compass heading
         // Map heading to pan position, avoiding hard left/right

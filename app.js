@@ -200,7 +200,7 @@ function toggleMode() {
 }
 
 function toggleWaveform() {
-    const waveforms = ['sine', 'triangle', 'sawtooth', 'roundpm', 'cello', 'organ'];
+    const waveforms = ['sine', 'triangle', 'sawtooth', 'roundpm', 'cello', 'organ', 'oboe', 'tympani'];
     const currentIndex = waveforms.indexOf(audioEngine.waveform);
     const nextIndex = (currentIndex + 1) % waveforms.length;
     const newWaveform = waveforms[nextIndex];
@@ -214,7 +214,9 @@ function toggleWaveform() {
         'sawtooth': 'Sawtooth',
         'roundpm': 'RoundPM',
         'cello': 'Cello',
-        'organ': 'Organ'
+        'organ': 'Organ',
+        'oboe': 'Oboe',
+        'tympani': 'Tympani'
     };
     waveformBtn.textContent = `Wave: ${displayNames[newWaveform]}`;
 }
