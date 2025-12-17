@@ -184,7 +184,7 @@ function stopAudio() {
 }
 
 function toggleMode() {
-    const modes = ['drone', 'pulse', 'chord'];
+    const modes = ['drone', 'pulse', 'click'];
     const currentIndex = modes.indexOf(audioEngine.mode);
     const nextIndex = (currentIndex + 1) % modes.length;
     const newMode = modes[nextIndex];
@@ -192,8 +192,8 @@ function toggleMode() {
     audioEngine.setMode(newMode);
     
     // Update button text and color
-    const displayNames = { 'drone': 'Drone', 'pulse': 'Pulse', 'chord': 'Chord' };
-    const colors = { 'drone': '#a50', 'pulse': '#0a5', 'chord': '#50a' };
+    const displayNames = { 'drone': 'Drone', 'pulse': 'Pulse', 'click': 'Click' };
+    const colors = { 'drone': '#a50', 'pulse': '#0a5', 'click': '#50a' };
     
     modeBtn.textContent = `Mode: ${displayNames[newMode]}`;
     modeBtn.style.background = colors[newMode];

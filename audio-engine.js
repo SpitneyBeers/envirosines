@@ -12,7 +12,7 @@ class EnvironmentalAudioEngine {
         this.highPassFilter = null;
         this.isRunning = false;
         
-        // Playback mode: 'drone' or 'pulse' or 'bell'
+        // Playback mode: 'drone' or 'pulse' or 'click'
         this.mode = 'drone';
         
         // Waveform type: 'sine', 'triangle', 'sawtooth'
@@ -192,7 +192,7 @@ class EnvironmentalAudioEngine {
     }
     
     setMode(mode) {
-        // Switch between 'drone' and 'percussive' modes
+        // Switch between 'drone', 'pulse', and 'click' modes
         this.mode = mode;
         
         // Restart all timers with new timing
@@ -358,20 +358,39 @@ class EnvironmentalAudioEngine {
                 const maxInterval = 4000 - (speedNorm * 3000); // 4s to 1s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
-        } else if (this.mode === 'chord') {
-            // CHORD MODE: All oscillators play together as sustained chords
-            duration = 4000 + Math.random() * 4000; // 4-8 seconds sustained
-            fadeIn = 0.8 + Math.random() * 0.7; // 0.8-1.5s slow attack
-            fadeOut = 1.5 + Math.random() * 1.5; // 1.5-3s long decay
+        } else if (this.mode === 'click') {
+            // CLICK MODE: Ultra-short transients (Ryoji Ikeda style)
+            // Three types: clicks (high freq), thuds (mid), bumps (sub-bass)
             
-            // All oscillators fire together - synchronized intervals
+            const clickType = Math.random();
             const speedNorm = Math.min(this.speed / 35.8, 1);
-            const minInterval = 8000 - (speedNorm * 6000); // 8s to 2s
-            const maxInterval = 12000 - (speedNorm * 8000); // 12s to 4s
-            interval = minInterval + Math.random() * (maxInterval - minInterval);
             
-            // Add slight randomization so not perfectly locked (more organic)
-            interval += (Math.random() - 0.5) * 500; // ±250ms variation
+            if (clickType < 0.5) {
+                // CLICK: Ultra-short high-frequency transient (1-3ms)
+                duration = 1 + Math.random() * 2; // 1-3ms
+                fadeIn = 0.0001; // Instant attack (0.1ms)
+                fadeOut = 0.0005; // Very quick decay (0.5ms)
+            } else if (clickType < 0.8) {
+                // THUD: Short mid-frequency impact (5-15ms)
+                duration = 5 + Math.random() * 10; // 5-15ms
+                fadeIn = 0.0002; // Nearly instant (0.2ms)
+                fadeOut = 0.003; // Quick decay (3ms)
+            } else {
+                // BUMP: Sub-bass pulse (20-50ms)
+                duration = 20 + Math.random() * 30; // 20-50ms
+                fadeIn = 0.001; // Very fast attack (1ms)
+                fadeOut = 0.01; // Short decay (10ms)
+            }
+            
+            // Mathematical timing patterns (Ikeda-style polyrhythms)
+            // Different oscillators have prime number intervals for complex patterns
+            const primeIntervals = [37, 41, 43, 47, 53, 59, 61, 67]; // Prime numbers in ms
+            const baseInterval = primeIntervals[oscIndex] * (10 + speedNorm * 5); // 370-1005ms range
+            
+            // Add slight randomness for organic feel while maintaining mathematical structure
+            const jitter = (Math.random() - 0.5) * baseInterval * 0.1; // ±10% variation
+            interval = baseInterval + jitter;
+            
         } else {
             // DRONE MODE: Longer, sustained tones with significant overlap
             duration = 3000 + Math.random() * 6000; // 3-9 seconds (was 1-6s)
@@ -403,8 +422,21 @@ class EnvironmentalAudioEngine {
             let targetVolume;
             if (this.mode === 'pulse') {
                 targetVolume = 0.08; // Was 0.035, now 2.3x louder
-            } else if (this.mode === 'chord') {
-                targetVolume = 0.12; // Full chord presence
+            } else if (this.mode === 'click') {
+                // CLICK MODE: Volume depends on click type (frequency-based)
+                // Use oscillator frequency to determine type
+                const freq = this.oscillators[oscIndex].frequency.value;
+                
+                if (freq > 2000) {
+                    // High-frequency click
+                    targetVolume = 0.25; // Loud, sharp clicks
+                } else if (freq > 200) {
+                    // Mid-frequency thud
+                    targetVolume = 0.35; // Louder impacts
+                } else {
+                    // Sub-bass bump
+                    targetVolume = 0.50; // Very loud sub-bass
+                }
             } else {
                 targetVolume = 0.10; // Drone - was 0.04, now 2.5x louder
             }
@@ -424,6 +456,9 @@ class EnvironmentalAudioEngine {
                     targetVolume *= 0.6; // Keep ultra-highs more present
                 }
             }
+            
+            // NO CLICK SOUND GENERATION - just use the oscillator tones
+            // (Removed the white noise click generation)
             
             this.fadeIn(oscIndex, fadeInSec, targetVolume);
             
@@ -600,9 +635,9 @@ class EnvironmentalAudioEngine {
         if (this.mode === 'pulse') {
             // Pulse: much wider range, scale up for variation
             fundamentalFreq = baseFreq * (Math.random() * 10 + 1); // 440Hz-4840Hz range with variation
-        } else if (this.mode === 'chord') {
-            // Chord: mid-range frequencies for rich harmonic chords
-            fundamentalFreq = baseFreq * (Math.random() * 0.8 + 0.6); // 264Hz-792Hz range
+        } else if (this.mode === 'click') {
+            // Click: very wide frequency range for clicks, thuds, bumps
+            fundamentalFreq = baseFreq * (Math.random() * 20 + 1); // 440Hz-9240Hz extreme range
         } else {
             // Drone: keep closer to pure A tuning, slight range for interest
             fundamentalFreq = baseFreq * (Math.random() * 0.5 + 0.75); // ~330Hz-660Hz from base A440
@@ -679,16 +714,13 @@ class EnvironmentalAudioEngine {
                 else if (oscIdx >= 5) {
                     harmonic = harmonic * 4.0; // Up two octaves
                 }
-            } else if (this.mode === 'chord') {
-                // Chord: full spectrum spread for rich chords
+            } else if (this.mode === 'click') {
+                // Click: extreme frequency distribution for varied transient types
                 if (oscIdx <= 2) {
-                    harmonic = harmonic * 0.5; // Down one octave (bass notes)
-                } else if (oscIdx >= 6) {
-                    harmonic = harmonic * 4.0; // Up two octaves (high shimmer)
-                } else if (oscIdx === 5) {
-                    harmonic = harmonic * 2.0; // Up one octave
+                    harmonic = harmonic * 0.125; // Down three octaves (sub-bass bumps)
+                } else if (oscIdx >= 5) {
+                    harmonic = harmonic * 8.0; // Up three octaves (high clicks)
                 }
-                // Middle oscillators (3, 4) stay at normal pitch
             } else {
                 // Drone mode: spread spectrum more - normal bass AND high shimmer
                 if (oscIdx === 1 || oscIdx === 2) {
@@ -711,8 +743,8 @@ class EnvironmentalAudioEngine {
         const speedNorm = Math.min(this.speed / 35.8, 1);
         let speedFreq = 50 + (speedNorm * 950);
         
-        // In pulse/bell modes, shift based on speed more extremely
-        if (this.mode === 'pulse' || this.mode === 'bell') {
+        // In pulse/click modes, shift based on speed more extremely
+        if (this.mode === 'pulse' || this.mode === 'click') {
             if (speedNorm < 0.5) {
                 speedFreq = speedFreq * 0.25; // Very low for slow speeds
             } else {
@@ -751,7 +783,7 @@ class EnvironmentalAudioEngine {
             panner.pan.value = finalPan;
         });
         
-        // TRAFFIC DENSITY → DISSONANT GLISSANDO
+        // TRAFFIC DENSITY → DISSONANT GLISSANDO (currently disabled)
         if (this.trafficOscillator && this.trafficGain) {
             const now = this.audioContext.currentTime;
             
