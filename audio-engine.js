@@ -35,6 +35,8 @@ class EnvironmentalAudioEngine {
         this.humidity = 50; // percentage
         this.heading = 0; // compass heading in degrees (0 = North)
         this.timeOfDay = 0.5;
+        this.elevation = 0; // meters above sea level
+        this.rainfall = 0; // mm/hour or boolean for active rain
         
         // Sun position
         this.sunElevation = 0; // degrees above horizon
@@ -100,23 +102,36 @@ class EnvironmentalAudioEngine {
         this.convolver.connect(this.masterGain);
         this.masterGain.connect(this.audioContext.destination);
         
-        // Create 8 oscillators (1 fundamental + 7 harmonics)
+        // Create 8 oscillators with unison pairs (16 total oscillators)
+        // Each main oscillator gets a detuned unison partner
         for (let i = 0; i < 8; i++) {
+            // Main oscillator
             const oscillator = this.audioContext.createOscillator();
             const gainNode = this.audioContext.createGain();
             const panner = this.audioContext.createStereoPanner();
             
+            // Unison pair oscillator (slightly detuned)
+            const unisonOsc = this.audioContext.createOscillator();
+            const unisonGain = this.audioContext.createGain();
+            
             // Initialize panner (will be controlled by compass)
             panner.pan.value = 0; // Center
             
-            oscillator.type = this.waveform; // Use selected waveform
+            oscillator.type = this.waveform;
+            unisonOsc.type = this.waveform;
             oscillator.frequency.value = 200;
+            unisonOsc.frequency.value = 200;
             
             // Start at 0 volume (sporadic)
             gainNode.gain.value = 0;
+            unisonGain.gain.value = 0;
             
-            // Audio chain: oscillator -> gain -> panner -> filters/reverb
+            // Audio chain: both oscillators -> shared gain -> panner -> filters/reverb
             oscillator.connect(gainNode);
+            unisonOsc.connect(unisonGain);
+            
+            // Mix both through the same gain control
+            unisonGain.connect(gainNode);
             gainNode.connect(panner);
             
             // Fundamental (osc 0) goes through filters, harmonics bypass filters
@@ -131,8 +146,10 @@ class EnvironmentalAudioEngine {
             }
             
             oscillator.start();
+            unisonOsc.start();
             
             this.oscillators.push(oscillator);
+            this.oscillators.push(unisonOsc); // Store unison pair
             this.gainNodes.push(gainNode);
             this.panners.push(panner);
         }
@@ -573,7 +590,7 @@ class EnvironmentalAudioEngine {
         this.isRunning = false;
     }
     
-    setEnvironmentalData(lat, lon, speed, temp, humidity, heading, timeOfDay, populationDensity = 0.5, trafficDensity = 0.0) {
+    setEnvironmentalData(lat, lon, speed, temp, humidity, heading, timeOfDay, populationDensity = 0.5, trafficDensity = 0.0, elevation = 0, rainfall = 0) {
         this.latitude = lat;
         this.longitude = lon;
         this.speed = speed;
@@ -583,6 +600,8 @@ class EnvironmentalAudioEngine {
         this.timeOfDay = timeOfDay;
         this.populationDensity = populationDensity;
         this.trafficDensity = trafficDensity;
+        this.elevation = elevation;
+        this.rainfall = rainfall;
         
         this.updateFrequencies();
     }
@@ -683,13 +702,27 @@ class EnvironmentalAudioEngine {
         // Determine if we use multipliers (low fund) or divisors (high fund)
         const useSubharmonics = this.fundamentalFreq > 200; // Lowered from 1000 - more likely to use subharmonics
         
-        // Set fundamental (oscillator 0) - always the root
+        // Set fundamental (oscillator 0 = main, oscillator 1 = unison) - always the root
         const fund = this.fundamentalFreq + randomDrift;
-        this.setOscillatorFrequency(0, fund);
         
-        // Oscillators 1, 2, 4, 5, 6, 7 = 6 chord tones
-        // We'll distribute the chord tones across octaves
-        const harmonicIndices = [1, 2, 4, 5, 6, 7];
+        // Apply slow vibrato to fundamental based on elevation
+        // Higher elevation = more vibrato (mountain = more modulation, sea level = stable)
+        const elevationNorm = Math.min(this.elevation / 3000, 1); // Normalize to 0-1 (0-3000m range)
+        const vibratoDepth = elevationNorm * 8; // 0-8 Hz vibrato depth
+        const vibratoRate = 0.3 + (elevationNorm * 0.4); // 0.3-0.7 Hz vibrato rate (slow)
+        
+        this.setOscillatorFrequency(0, fund, vibratoDepth, vibratoRate); // Main oscillator with vibrato
+        
+        // Unison pair - detune based on speed
+        const speedNorm = Math.min(this.speed / 35.8, 1);
+        const unisonDetune = speedNorm * 12; // 0-12 cents detune (faster = more drift)
+        this.setOscillatorFrequency(1, fund * Math.pow(2, unisonDetune / 1200), vibratoDepth, vibratoRate); // Detuned unison
+        
+        // Oscillators 1, 2, 4, 5, 6, 7 = 6 chord tones (with unison pairs)
+        // Main oscillators at even indices: 2, 4, 8, 10, 12, 14
+        // Unison pairs at odd indices: 3, 5, 9, 11, 13, 15
+        const harmonicIndices = [2, 4, 8, 10, 12, 14]; // Main oscillators
+        const unisonIndices = [3, 5, 9, 11, 13, 15]; // Unison pairs
         
         harmonicIndices.forEach((oscIdx, i) => {
             // Cycle through scale tones, doubling at octaves
@@ -708,38 +741,43 @@ class EnvironmentalAudioEngine {
             // Mode-specific octave shifts
             if (this.mode === 'pulse') {
                 // Pulse: extreme shifts for wide frequency spread
-                if (oscIdx <= 2) {
+                if (i <= 1) { // First two harmonics
                     harmonic = harmonic * 0.25; // Down two octaves
                 }
-                else if (oscIdx >= 5) {
+                else if (i >= 4) { // Last two harmonics
                     harmonic = harmonic * 4.0; // Up two octaves
                 }
             } else if (this.mode === 'click') {
                 // Click: extreme frequency distribution for varied transient types
-                if (oscIdx <= 2) {
+                if (i <= 1) {
                     harmonic = harmonic * 0.125; // Down three octaves (sub-bass bumps)
-                } else if (oscIdx >= 5) {
+                } else if (i >= 4) {
                     harmonic = harmonic * 8.0; // Up three octaves (high clicks)
                 }
             } else {
                 // Drone mode: spread spectrum more - normal bass AND high shimmer
-                if (oscIdx === 1 || oscIdx === 2) {
+                if (i === 0 || i === 1) {
                     harmonic = harmonic * 1.0; // Normal pitch (no shift)
-                } else if (oscIdx === 6 || oscIdx === 7) {
+                } else if (i === 4 || i === 5) {
                     harmonic = harmonic * 8.0; // Ultra high shimmer (3 octaves up)
-                } else if (oscIdx === 5) {
+                } else if (i === 3) {
                     harmonic = harmonic * 4.0; // High (2 octaves up)
                 }
             }
             
-            // Update frequency immediately for all oscillators
+            // Update main oscillator frequency
             this.setOscillatorFrequency(oscIdx, harmonic);
+            
+            // Update unison pair with speed-based detune
+            const speedNorm = Math.min(this.speed / 35.8, 1);
+            const unisonDetune = speedNorm * 12; // 0-12 cents detune
+            this.setOscillatorFrequency(unisonIndices[i], harmonic * Math.pow(2, unisonDetune / 1200));
         });
         
         // Update last heading for next comparison
         this.lastHeading = this.heading;
         
-        // Oscillator 3: Direct speed control (independent of fundamental)
+        // Oscillator 3: Direct speed control (main + unison pair at indices 6, 7)
         const speedNorm = Math.min(this.speed / 35.8, 1);
         let speedFreq = 50 + (speedNorm * 950);
         
@@ -752,7 +790,11 @@ class EnvironmentalAudioEngine {
             }
         }
         
-        this.setOscillatorFrequency(3, speedFreq);
+        this.setOscillatorFrequency(6, speedFreq); // Main
+        
+        // Unison pair with speed-based detune
+        const speedUnisonDetune = speedNorm * 12;
+        this.setOscillatorFrequency(7, speedFreq * Math.pow(2, speedUnisonDetune / 1200)); // Unison
         
         // No vibrato - perfectly stable oscillators
         
@@ -782,6 +824,30 @@ class EnvironmentalAudioEngine {
             const finalPan = Math.max(-0.8, Math.min(0.8, panPosition + offset));
             panner.pan.value = finalPan;
         });
+        
+        // RAINFALL → TREMOLO EFFECT (amplitude modulation)
+        // Active rainfall creates tremolo at 50% depth on all gain nodes
+        if (this.rainfall > 0) {
+            const now = this.audioContext.currentTime;
+            const tremoloRate = 4 + (Math.random() * 2); // 4-6 Hz tremolo (fast flutter)
+            const tremoloDepth = 0.5; // 50% depth
+            
+            this.gainNodes.forEach((gainNode, i) => {
+                const currentGain = gainNode.gain.value;
+                if (currentGain > 0) { // Only modulate active oscillators
+                    // Create tremolo by modulating gain
+                    gainNode.gain.cancelScheduledValues(now);
+                    gainNode.gain.setValueAtTime(currentGain, now);
+                    
+                    // Set up repeating tremolo pattern
+                    for (let t = 0; t < 2; t += 0.05) { // 2 second lookahead
+                        const phase = t * tremoloRate * Math.PI * 2;
+                        const modulation = 1 - (tremoloDepth * 0.5) + (tremoloDepth * 0.5 * Math.sin(phase));
+                        gainNode.gain.linearRampToValueAtTime(currentGain * modulation, now + t);
+                    }
+                }
+            });
+        }
         
         // TRAFFIC DENSITY → DISSONANT GLISSANDO (currently disabled)
         if (this.trafficOscillator && this.trafficGain) {
@@ -954,20 +1020,38 @@ class EnvironmentalAudioEngine {
         return c1.map((val, i) => val + (c2[i] - val) * t);
     }
     
-    setOscillatorFrequency(index, frequency) {
+    setOscillatorFrequency(index, frequency, vibratoDepth = 0, vibratoRate = 0) {
         if (!this.oscillators[index]) return;
         
         const now = this.audioContext.currentTime;
         const osc = this.oscillators[index];
         
-        // No pitch drift - perfectly stable tones
-        const organicFreq = frequency;
-        
-        osc.frequency.cancelScheduledValues(now);
-        osc.frequency.setValueAtTime(osc.frequency.value, now);
-        osc.frequency.exponentialRampToValueAtTime(
-            Math.max(20, Math.min(20000, organicFreq)),
-            now + 2.0  // 2 second smooth glide (was 0.1s which created stepping)
-        );
+        // Apply vibrato to fundamental (index 0) based on elevation
+        if (vibratoDepth > 0 && vibratoRate > 0 && index === 0) {
+            // Set base frequency
+            osc.frequency.cancelScheduledValues(now);
+            osc.frequency.setValueAtTime(frequency, now);
+            
+            // Apply slow vibrato modulation
+            const vibratoFreq = frequency;
+            for (let t = 0; t < 4; t += 0.1) { // 4 second lookahead, 100ms steps
+                const phase = t * vibratoRate * Math.PI * 2;
+                const modulation = vibratoFreq + (vibratoDepth * Math.sin(phase));
+                osc.frequency.linearRampToValueAtTime(
+                    Math.max(20, Math.min(20000, modulation)),
+                    now + t
+                );
+            }
+        } else {
+            // No vibrato - perfectly stable tones
+            const organicFreq = frequency;
+            
+            osc.frequency.cancelScheduledValues(now);
+            osc.frequency.setValueAtTime(osc.frequency.value, now);
+            osc.frequency.exponentialRampToValueAtTime(
+                Math.max(20, Math.min(20000, organicFreq)),
+                now + 2.0  // 2 second smooth glide
+            );
+        }
     }
 }

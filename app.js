@@ -20,7 +20,9 @@ let currentData = {
     weatherDescription: '',
     timeOfDay: 0.5,
     populationDensity: 0.5, // 0 = rural, 1 = dense urban
-    trafficDensity: 0.0 // 0 = no traffic, 1 = heavy traffic
+    trafficDensity: 0.0, // 0 = no traffic, 1 = heavy traffic
+    elevation: 0, // meters above sea level
+    rainfall: 0 // mm/hour (0 = no rain, >0 = active rain)
 };
 
 // DOM elements
@@ -424,6 +426,9 @@ async function fetchWeather() {
     // Fetch population density from OSM (building density as proxy)
     await fetchPopulationDensity();
     
+    // Fetch elevation from Open-Elevation API
+    await fetchElevation();
+    
     // Simulate traffic density based on speed and time of day
     updateTrafficDensity();
     
@@ -437,14 +442,25 @@ async function fetchWeather() {
         
         const data = await response.json();
         currentData.temperature = data.main.temp;
-        currentData.humidity = data.main.humidity; // Add humidity
+        currentData.humidity = data.main.humidity;
         currentData.weatherDescription = data.weather[0].description;
+        
+        // Extract rainfall data
+        // rain.1h = rainfall in last hour (mm)
+        currentData.rainfall = data.rain && data.rain['1h'] ? data.rain['1h'] : 0;
         
         // Update UI
         tempEl.textContent = `${currentData.temperature.toFixed(1)}°C`;
-        weatherEl.textContent = currentData.weatherDescription.charAt(0).toUpperCase() + 
-                               currentData.weatherDescription.slice(1) + 
-                               ` (${currentData.humidity}% humid)`;
+        
+        let weatherText = currentData.weatherDescription.charAt(0).toUpperCase() + 
+                         currentData.weatherDescription.slice(1) + 
+                         ` (${currentData.humidity}% humid)`;
+        
+        if (currentData.rainfall > 0) {
+            weatherText += ` - Rain: ${currentData.rainfall.toFixed(1)}mm/h`;
+        }
+        
+        weatherEl.textContent = weatherText;
         
         // Update audio engine
         updateAudioEngine();
@@ -452,6 +468,30 @@ async function fetchWeather() {
     } catch (error) {
         console.error('Weather fetch error:', error);
         weatherEl.textContent = 'Weather unavailable';
+    }
+}
+
+async function fetchElevation() {
+    // Use Open-Elevation API (free, no key needed)
+    const lat = currentData.latitude;
+    const lon = currentData.longitude;
+    
+    try {
+        const url = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lon}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error('Elevation fetch failed');
+        }
+        
+        const data = await response.json();
+        currentData.elevation = data.results[0].elevation;
+        
+        console.log(`Elevation: ${currentData.elevation}m above sea level`);
+    } catch (error) {
+        console.error('Elevation fetch error:', error);
+        // Fallback to sea level
+        currentData.elevation = 0;
     }
 }
 
@@ -465,7 +505,9 @@ function updateAudioEngine() {
         currentData.heading,
         currentData.timeOfDay,
         currentData.populationDensity,
-        currentData.trafficDensity
+        currentData.trafficDensity,
+        currentData.elevation,
+        currentData.rainfall
     );
 }
 
