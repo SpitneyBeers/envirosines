@@ -12,7 +12,7 @@ class EnvironmentalAudioEngine {
         this.highPassFilter = null;
         this.isRunning = false;
         
-        // Playback mode: 'drone' or 'pulse' or 'click'
+        // Playback mode: 'drone' or 'pulse' or 'click' or 'fart'
         this.mode = 'drone';
         
         // Waveform type: 'sine', 'triangle', 'sawtooth'
@@ -225,9 +225,37 @@ class EnvironmentalAudioEngine {
         // Switch between waveforms: sine, triangle, sawtooth, roundpm, cello, organ, oboe, tympani
         this.waveform = waveform;
         
+        // In fart mode, always use special fart waveform regardless of selection
+        const effectiveWaveform = this.mode === 'fart' ? 'fart' : waveform;
+        
         // Update all oscillator types
         this.oscillators.forEach(osc => {
-            if (waveform === 'roundpm') {
+            if (effectiveWaveform === 'fart') {
+                // FART WAVEFORM: Inharmonic, noisy spectrum with strong low fundamentals
+                // Mix of square-ish base with random higher partials for "air/gas" sound
+                const real = new Float32Array([
+                    0,      // DC offset
+                    1.0,    // Fundamental (strong)
+                    0.6,    // 2nd (strong for bass)
+                    0.3,    // 3rd (inharmonic)
+                    0.5,    // 4th (strong even)
+                    0.15,   // 5th (weak)
+                    0.25,   // 6th (moderate)
+                    0.1,    // 7th (weak)
+                    0.2,    // 8th
+                    0.05,   // 9th (very weak - adds "air")
+                    0.1,    // 10th
+                    0.03,   // 11th
+                    0.07,   // 12th
+                    0.02,   // 13th
+                    0.05,   // 14th (random partials for "texture")
+                    0.01,   // 15th
+                    0.03    // 16th
+                ]);
+                const imag = new Float32Array(real.length);
+                const wave = this.audioContext.createPeriodicWave(real, imag);
+                osc.setPeriodicWave(wave);
+            } else if (effectiveWaveform === 'roundpm') {
                 // Create custom PeriodicWave for rounded pulse-width modulation
                 // Combines fundamental with harmonics to create rounded square-ish wave
                 const real = new Float32Array([0, 0.8, 0, 0.3, 0, 0.15, 0, 0.08, 0, 0.05]);
@@ -408,6 +436,38 @@ class EnvironmentalAudioEngine {
             const jitter = (Math.random() - 0.5) * baseInterval * 0.1; // ±10% variation
             interval = baseInterval + jitter;
             
+        } else if (this.mode === 'fart') {
+            // FART MODE: Flatulence simulation with varied types
+            // Short squeakers, long rippers, wet sputters, bass bombs
+            
+            const fartType = Math.random();
+            const speedNorm = Math.min(this.speed / 35.8, 1);
+            
+            if (fartType < 0.25) {
+                // SQUEAKER: High-pitched, short (50-200ms)
+                duration = 50 + Math.random() * 150;
+                fadeIn = 0.001; // Quick attack
+                fadeOut = 0.05; // Sharp release
+            } else if (fartType < 0.5) {
+                // RIPPER: Medium pitch, longer with flutter (300-800ms)
+                duration = 300 + Math.random() * 500;
+                fadeIn = 0.005; // Slightly slower attack
+                fadeOut = 0.1; // Medium release
+            } else if (fartType < 0.75) {
+                // SPUTTER: Low pitch, interrupted pattern (200-400ms)
+                duration = 200 + Math.random() * 200;
+                fadeIn = 0.002;
+                fadeOut = 0.01; // Very quick cutoff for staccato effect
+            } else {
+                // BASS BOMB: Very low, sustained rumble (500-1500ms)
+                duration = 500 + Math.random() * 1000;
+                fadeIn = 0.01; // Gradual attack
+                fadeOut = 0.2; // Long decay
+            }
+            
+            // Random intervals (farts are unpredictable)
+            interval = 1000 + Math.random() * 8000; // 1-9 seconds between events
+            
         } else {
             // DRONE MODE: Longer, sustained tones with significant overlap
             duration = 3000 + Math.random() * 6000; // 3-9 seconds (was 1-6s)
@@ -442,7 +502,7 @@ class EnvironmentalAudioEngine {
             } else if (this.mode === 'click') {
                 // CLICK MODE: Volume depends on click type (frequency-based)
                 // Use oscillator frequency to determine type
-                const freq = this.oscillators[oscIndex].frequency.value;
+                const freq = this.oscillators[oscIndex * 2].frequency.value; // Main oscillator
                 
                 if (freq > 2000) {
                     // High-frequency click
@@ -453,6 +513,20 @@ class EnvironmentalAudioEngine {
                 } else {
                     // Sub-bass bump
                     targetVolume = 0.50; // Very loud sub-bass
+                }
+            } else if (this.mode === 'fart') {
+                // FART MODE: Volume varies by type
+                const freq = this.oscillators[oscIndex * 2].frequency.value;
+                
+                if (freq > 500) {
+                    // High squeaker
+                    targetVolume = 0.15; // Moderate volume
+                } else if (freq > 150) {
+                    // Mid ripper/sputter
+                    targetVolume = 0.25; // Louder
+                } else {
+                    // Bass bomb
+                    targetVolume = 0.40; // Very loud, rumbling
                 }
             } else {
                 targetVolume = 0.10; // Drone - was 0.04, now 2.5x louder
@@ -657,6 +731,19 @@ class EnvironmentalAudioEngine {
         } else if (this.mode === 'click') {
             // Click: very wide frequency range for clicks, thuds, bumps
             fundamentalFreq = baseFreq * (Math.random() * 20 + 1); // 440Hz-9240Hz extreme range
+        } else if (this.mode === 'fart') {
+            // Fart: low frequencies with random variation for different fart types
+            // Squeakers (high) = 300-800Hz, Rippers (mid) = 150-300Hz, Bass bombs (low) = 40-150Hz
+            const fartType = Math.random();
+            if (fartType < 0.25) {
+                fundamentalFreq = 300 + Math.random() * 500; // Squeaker
+            } else if (fartType < 0.5) {
+                fundamentalFreq = 150 + Math.random() * 150; // Ripper
+            } else if (fartType < 0.75) {
+                fundamentalFreq = 100 + Math.random() * 100; // Sputter
+            } else {
+                fundamentalFreq = 40 + Math.random() * 110; // Bass bomb
+            }
         } else {
             // Drone: keep closer to pure A tuning, slight range for interest
             fundamentalFreq = baseFreq * (Math.random() * 0.5 + 0.75); // ~330Hz-660Hz from base A440
@@ -754,6 +841,13 @@ class EnvironmentalAudioEngine {
                 } else if (i >= 4) {
                     harmonic = harmonic * 8.0; // Up three octaves (high clicks)
                 }
+            } else if (this.mode === 'fart') {
+                // Fart: focus on low-mid frequencies with some high overtones for realism
+                if (i <= 2) {
+                    harmonic = harmonic * 0.5; // Down one octave (bass rumble)
+                } else if (i >= 5) {
+                    harmonic = harmonic * 2.0; // Up one octave (high squeaks/air)
+                }
             } else {
                 // Drone mode: spread spectrum more - normal bass AND high shimmer
                 if (i === 0 || i === 1) {
@@ -781,8 +875,8 @@ class EnvironmentalAudioEngine {
         const speedNorm = Math.min(this.speed / 35.8, 1);
         let speedFreq = 50 + (speedNorm * 950);
         
-        // In pulse/click modes, shift based on speed more extremely
-        if (this.mode === 'pulse' || this.mode === 'click') {
+        // In pulse/click/fart modes, shift based on speed more extremely
+        if (this.mode === 'pulse' || this.mode === 'click' || this.mode === 'fart') {
             if (speedNorm < 0.5) {
                 speedFreq = speedFreq * 0.25; // Very low for slow speeds
             } else {
@@ -826,11 +920,19 @@ class EnvironmentalAudioEngine {
         });
         
         // RAINFALL → TREMOLO EFFECT (amplitude modulation)
-        // Active rainfall creates tremolo at 50% depth on all gain nodes
+        // Rainfall amount determines tremolo depth
+        // Light rain (0.5mm/h) = ~10% depth, Heavy storm (10mm/h+) = ~80% depth
         if (this.rainfall > 0) {
             const now = this.audioContext.currentTime;
             const tremoloRate = 4 + (Math.random() * 2); // 4-6 Hz tremolo (fast flutter)
-            const tremoloDepth = 0.5; // 50% depth
+            
+            // Map rainfall to tremolo depth
+            // 0.5mm/h = light rain = 10% depth
+            // 2.5mm/h = moderate rain = 30% depth
+            // 7.5mm/h = heavy rain = 60% depth
+            // 10mm/h+ = storm = 80% depth
+            const rainfallNorm = Math.min(this.rainfall / 10, 1); // Normalize to 0-1 (0-10mm/h range)
+            const tremoloDepth = 0.1 + (rainfallNorm * 0.7); // 10% to 80% depth
             
             this.gainNodes.forEach((gainNode, i) => {
                 const currentGain = gainNode.gain.value;
