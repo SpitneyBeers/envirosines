@@ -126,13 +126,12 @@ class EnvironmentalAudioEngine {
             gainNode.gain.value = 0;
             unisonGain.gain.value = 0;
             
-            // Audio chain: both oscillators -> shared gain -> panner -> filters/reverb
+            // Audio chain: both oscillators -> their respective gains -> shared panner -> filters/reverb
             oscillator.connect(gainNode);
             unisonOsc.connect(unisonGain);
             
-            // Mix both through the same gain control
-            unisonGain.connect(gainNode);
             gainNode.connect(panner);
+            unisonGain.connect(panner);
             
             // Fundamental (osc 0) goes through filters, harmonics bypass filters
             if (i === 0) {
@@ -151,6 +150,7 @@ class EnvironmentalAudioEngine {
             this.oscillators.push(oscillator);
             this.oscillators.push(unisonOsc); // Store unison pair
             this.gainNodes.push(gainNode);
+            this.gainNodes.push(unisonGain); // Store unison gain
             this.panners.push(panner);
         }
         
