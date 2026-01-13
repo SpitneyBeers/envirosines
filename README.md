@@ -197,6 +197,8 @@ updateInterval = setInterval(updateTimeOfDay, 500); // 0.5 sec
 - `app.js` - Main application logic
 - `README.md` - This file
 
+
+
 ## Browser Requirements
 
 - **iOS Safari 14+** (iOS 14 added better Web Audio support)
