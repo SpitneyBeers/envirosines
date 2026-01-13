@@ -212,29 +212,33 @@ class EnvironmentalAudioEngine {
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         } else if (this.mode === 'click') {
+            // CLICK MODE: Use noise buffers instead of oscillators for Ikeda-style clicks
             const clickType = Math.random();
             
             if (clickType < 0.5) {
-                duration = 1 + Math.random() * 2;
+                // HARD CLICK: Very short filtered noise burst
+                duration = 0.5 + Math.random() * 2; // 0.5-2.5ms
                 fadeIn = 0.0001;
-                fadeOut = 0.0005;
+                fadeOut = 0.0001;
             } else if (clickType < 0.8) {
-                duration = 5 + Math.random() * 10;
-                fadeIn = 0.0002;
-                fadeOut = 0.003;
+                // CLIPPED THUD: Short clipped sine burst
+                duration = 3 + Math.random() * 7; // 3-10ms
+                fadeIn = 0.0001;
+                fadeOut = 0.001;
             } else {
-                duration = 20 + Math.random() * 30;
-                fadeIn = 0.001;
-                fadeOut = 0.01;
+                // HARD BUMP: Clipped low frequency pulse
+                duration = 10 + Math.random() * 20; // 10-30ms
+                fadeIn = 0.0001;
+                fadeOut = 0.003;
             }
             
             // MUCH SPARSER - Ikeda uses silence as compositional element
             const primeIntervals = [37, 41, 43, 47, 53, 59, 61, 67];
-            const baseInterval = primeIntervals[oscIndex] * (40 + speedNorm * 20); // 1480-4020ms (was 370-1005ms)
+            const baseInterval = primeIntervals[oscIndex] * (40 + speedNorm * 20); // 1480-4020ms
             
             // Add longer random gaps (up to 10 seconds of silence)
             const silenceChance = Math.random();
-            const extraSilence = silenceChance > 0.7 ? Math.random() * 10000 : 0; // 30% chance of 0-10s silence
+            const extraSilence = silenceChance > 0.7 ? Math.random() * 10000 : 0;
             
             const jitter = (Math.random() - 0.5) * baseInterval * 0.1;
             interval = baseInterval + jitter + extraSilence;
@@ -259,39 +263,105 @@ class EnvironmentalAudioEngine {
         const timer = setTimeout(() => {
             if (!this.isRunning) return;
             
-            let targetVolume;
-            if (this.mode === 'pulse') {
-                targetVolume = 0.08;
-            } else if (this.mode === 'click') {
+            // CLICK MODE: Generate hard-clipped noise/impulse buffers instead of using oscillators
+            if (this.mode === 'click') {
+                const now = this.audioContext.currentTime;
+                const sampleRate = this.audioContext.sampleRate;
+                const bufferLength = Math.ceil(sampleRate * (duration / 1000));
+                const buffer = this.audioContext.createBuffer(1, bufferLength, sampleRate);
+                const data = buffer.getChannelData(0);
+                
                 const freq = this.oscillators[oscIndex].frequency.value;
+                
                 if (freq > 2000) {
-                    targetVolume = 0.25;
+                    // HARD CLICK: Filtered white noise, heavily clipped
+                    for (let i = 0; i < bufferLength; i++) {
+                        const noise = Math.random() * 2 - 1;
+                        // Hard clipping
+                        data[i] = Math.max(-0.9, Math.min(0.9, noise * 3));
+                        // Exponential decay
+                        data[i] *= Math.exp(-i / (bufferLength * 0.3));
+                    }
                 } else if (freq > 200) {
-                    targetVolume = 0.35;
+                    // CLIPPED THUD: Sine wave with hard clipping
+                    const cyclesPerSample = freq / sampleRate;
+                    for (let i = 0; i < bufferLength; i++) {
+                        const sine = Math.sin(2 * Math.PI * cyclesPerSample * i);
+                        // Aggressive hard clipping creates digital distortion
+                        data[i] = Math.max(-0.7, Math.min(0.7, sine * 5));
+                        // Quick decay
+                        data[i] *= 1 - (i / bufferLength);
+                    }
                 } else {
-                    targetVolume = 0.50;
+                    // HARD BUMP: Low frequency pulse with clipping
+                    const cyclesPerSample = freq / sampleRate;
+                    for (let i = 0; i < bufferLength; i++) {
+                        const sine = Math.sin(2 * Math.PI * cyclesPerSample * i);
+                        // Extreme clipping for sub-bass thump
+                        data[i] = Math.max(-0.95, Math.min(0.95, sine * 8));
+                        // Slower decay for bass
+                        data[i] *= Math.exp(-i / (bufferLength * 0.6));
+                    }
                 }
+                
+                // Play the buffer
+                const source = this.audioContext.createBufferSource();
+                const clickGain = this.audioContext.createGain();
+                source.buffer = buffer;
+                
+                let targetVolume;
+                if (freq > 2000) {
+                    targetVolume = 0.35; // Clicks loud
+                } else if (freq > 200) {
+                    targetVolume = 0.45; // Thuds louder
+                } else {
+                    targetVolume = 0.60; // Bumps very loud
+                }
+                
+                clickGain.gain.value = targetVolume;
+                
+                source.connect(clickGain);
+                clickGain.connect(this.dryGain);
+                clickGain.connect(this.wetGain);
+                
+                source.start(now);
+                
+                // Schedule next click
+                setTimeout(() => {
+                    if (!this.isRunning) return;
+                    this.scheduleSporadicPulse(oscIndex);
+                }, interval);
+                
             } else {
-                targetVolume = 0.10;
+                // DRONE and PULSE modes use normal oscillators
+            } else {
+                // DRONE and PULSE modes use normal oscillators
+            
+                let targetVolume;
+                if (this.mode === 'pulse') {
+                    targetVolume = 0.08;
+                } else {
+                    targetVolume = 0.10;
+                }
+                
+                if (this.mode === 'drone' && oscIndex <= 2) {
+                    targetVolume *= 1.15;
+                }
+                
+                if (this.mode === 'drone') {
+                    if (oscIndex === 4) targetVolume *= 0.5;
+                    else if (oscIndex === 5) targetVolume *= 0.5;
+                    else if (oscIndex === 6 || oscIndex === 7) targetVolume *= 0.6;
+                }
+                
+                this.fadeIn(oscIndex, fadeIn, targetVolume);
+                
+                setTimeout(() => {
+                    if (!this.isRunning) return;
+                    this.fadeOut(oscIndex, fadeOut);
+                    this.scheduleSporadicPulse(oscIndex);
+                }, duration);
             }
-            
-            if (this.mode === 'drone' && oscIndex <= 2) {
-                targetVolume *= 1.15;
-            }
-            
-            if (this.mode === 'drone') {
-                if (oscIndex === 4) targetVolume *= 0.5;
-                else if (oscIndex === 5) targetVolume *= 0.5;
-                else if (oscIndex === 6 || oscIndex === 7) targetVolume *= 0.6;
-            }
-            
-            this.fadeIn(oscIndex, fadeIn, targetVolume);
-            
-            setTimeout(() => {
-                if (!this.isRunning) return;
-                this.fadeOut(oscIndex, fadeOut);
-                this.scheduleSporadicPulse(oscIndex);
-            }, duration);
         }, interval);
         
         this.sporadicTimers.push(timer);
