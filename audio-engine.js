@@ -76,7 +76,7 @@ class EnvironmentalAudioEngine {
         this.convolver.connect(this.masterGain);
         this.masterGain.connect(this.audioContext.destination);
         
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < 9; i++) {
             const oscillator = this.audioContext.createOscillator();
             const gainNode = this.audioContext.createGain();
             const panner = this.audioContext.createStereoPanner();
@@ -128,7 +128,7 @@ class EnvironmentalAudioEngine {
     }
     
     startSporadicOscillators() {
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < 9; i++) {
             this.scheduleSporadicPulse(i);
         }
     }
@@ -140,7 +140,7 @@ class EnvironmentalAudioEngine {
         this.sporadicTimers.forEach(timer => clearTimeout(timer));
         this.sporadicTimers = [];
         
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < 9; i++) {
             this.scheduleSporadicPulse(i);
         }
     }
@@ -215,7 +215,7 @@ class EnvironmentalAudioEngine {
                 fadeOut = 0.003;
             }
             
-            const primeIntervals = [37, 41, 43, 47, 53, 59, 61, 67];
+            const primeIntervals = [37, 41, 43, 47, 53, 59, 61, 67, 71]; // Added 71 for osc 8
             const baseInterval = primeIntervals[oscIndex] * (40 + speedNorm * 20);
             
             const silenceChance = Math.random();
@@ -316,6 +316,7 @@ class EnvironmentalAudioEngine {
                     if (oscIndex === 4) targetVolume *= 0.5;
                     else if (oscIndex === 5) targetVolume *= 0.5;
                     else if (oscIndex === 6 || oscIndex === 7) targetVolume *= 0.6;
+                    else if (oscIndex === 8) targetVolume *= 0.9; // Inverted speed osc slightly quieter
                 }
                 
                 this.fadeIn(oscIndex, fadeIn, targetVolume);
@@ -484,7 +485,14 @@ class EnvironmentalAudioEngine {
         const useSubharmonics = this.fundamentalFreq > 200;
         
         const fund = this.fundamentalFreq + randomDrift;
-        this.setOscillatorFrequency(0, fund);
+        
+        // DOPPLER EFFECT: Speed creates pitch shift on fundamental
+        // Faster speed = higher pitch (approaching), like a passing vehicle
+        const speedNormDoppler = Math.min(this.speed / 35.8, 1);
+        const dopplerShift = 1 + (speedNormDoppler * 0.15); // Up to +15% pitch shift at max speed
+        const fundamentalWithDoppler = fund * dopplerShift;
+        
+        this.setOscillatorFrequency(0, fundamentalWithDoppler);
         
         const harmonicIndices = [1, 2, 4, 5, 6, 7];
         
@@ -508,12 +516,18 @@ class EnvironmentalAudioEngine {
             } else if (this.mode === 'click') {
                 if (oscIdx <= 2) {
                     harmonic = harmonic * 0.125;
+                } else if (oscIdx === 4) {
+                    // Osc 4: Keep in LOW-MID range instead of high
+                    harmonic = harmonic * 0.5; // Down one octave (was 8x up)
                 } else if (oscIdx >= 5) {
                     harmonic = harmonic * 8.0;
                 }
             } else {
                 if (oscIdx === 1 || oscIdx === 2) {
                     harmonic = harmonic * 1.0;
+                } else if (oscIdx === 4) {
+                    // Osc 4: LOW-MID range in Drone mode too
+                    harmonic = harmonic * 1.5; // Slightly above fundamental (was 1x)
                 } else if (oscIdx === 6 || oscIdx === 7) {
                     harmonic = harmonic * 8.0;
                 } else if (oscIdx === 5) {
@@ -526,8 +540,10 @@ class EnvironmentalAudioEngine {
         
         this.lastHeading = this.heading;
         
+        // Oscillator 3: Speed oscillator (UPWARD with speed)
+        // Oscillator 8: Inverted speed oscillator (DOWNWARD with speed)
         const speedNorm = Math.min(this.speed / 35.8, 1);
-        let speedFreq = 50 + (speedNorm * 950);
+        let speedFreq = 50 + (speedNorm * 950); // 50Hz to 1000Hz
         
         if (this.mode === 'pulse' || this.mode === 'click') {
             if (speedNorm < 0.5) {
@@ -537,7 +553,20 @@ class EnvironmentalAudioEngine {
             }
         }
         
-        this.setOscillatorFrequency(3, speedFreq);
+        this.setOscillatorFrequency(3, speedFreq); // UPWARD oscillator
+        
+        // Inverted speed oscillator (osc 8): Goes DOWN as speed increases
+        let invertedSpeedFreq = 1000 - (speedNorm * 950); // 1000Hz to 50Hz (inverted)
+        
+        if (this.mode === 'pulse' || this.mode === 'click') {
+            if (speedNorm < 0.5) {
+                invertedSpeedFreq = invertedSpeedFreq * 4.0; // High when slow
+            } else {
+                invertedSpeedFreq = invertedSpeedFreq * 0.25; // Low when fast
+            }
+        }
+        
+        this.setOscillatorFrequency(8, invertedSpeedFreq); // DOWNWARD oscillator
         
         const humidityNorm = this.humidity / 100;
         this.dryGain.gain.value = 0.85 - (humidityNorm * 0.30);
