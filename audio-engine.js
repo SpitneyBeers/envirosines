@@ -3,7 +3,7 @@ class EnvironmentalAudioEngine {
         this.audioContext = null;
         this.oscillators = [];
         this.gainNodes = [];
-        this.panners = []; // Stereo panners for each oscillator
+        this.panners = [];
         this.convolver = null;
         this.masterGain = null;
         this.dryGain = null;
@@ -12,55 +12,37 @@ class EnvironmentalAudioEngine {
         this.highPassFilter = null;
         this.isRunning = false;
         
-        // Playback mode: 'drone' or 'pulse' or 'click'
         this.mode = 'drone';
-        
-        // Waveform type: 'sine', 'triangle', 'sawtooth'
         this.waveform = 'sine';
-        
-        // Scale type: 'dreyblatt', 'harmonic', 'slendro', 'pelog', 'quartertone'
         this.scale = 'dreyblatt';
-        
-        // Fundamental frequency based on sun position
         this.fundamentalFreq = 200;
-        
-        // All 8 oscillators are now sporadic
         this.sporadicTimers = [];
         
         // Environmental parameters
         this.latitude = 0;
         this.longitude = 0;
-        this.speed = 0; // meters per second
+        this.speed = 0;
         this.temperature = 20;
-        this.humidity = 50; // percentage
-        this.heading = 0; // compass heading in degrees (0 = North)
+        this.humidity = 50;
+        this.heading = 0;
         this.timeOfDay = 0.5;
-        
-        // Sun position
-        this.sunElevation = 0; // degrees above horizon
-        
-        // Population and traffic density (0.0 to 1.0)
-        this.populationDensity = 0.5; // 0 = rural, 1 = dense urban
-        this.trafficDensity = 0.0; // 0 = no traffic, 1 = heavy traffic
-        
-        // Compass heading tracking for staggered updates
+        this.elevation = 0;
+        this.rainfall = 0;
+        this.sunElevation = 0;
+        this.populationDensity = 0.5;
+        this.trafficDensity = 0.0;
         this.lastHeading = 0;
-        this.pendingFrequencyUpdates = []; // Queue of oscillators waiting to update
-        
-        // Traffic glissando oscillator (dissonant element)
+        this.pendingFrequencyUpdates = [];
         this.trafficOscillator = null;
         this.trafficGain = null;
-        
         this.onFrequencyUpdate = null;
     }
     
     async start() {
         if (this.isRunning) return;
         
-        // Create audio context
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
-        // Resume context if suspended (iOS)
         if (this.audioContext.state === 'suspended') {
             await this.audioContext.resume();
         }
@@ -75,13 +57,13 @@ class EnvironmentalAudioEngine {
         this.convolver = this.audioContext.createConvolver();
         this.convolver.buffer = this.createReverbImpulse();
         
-        // Create dry/wet mix for reverb (controlled by humidity)
+        // Create dry/wet mix
         this.dryGain = this.audioContext.createGain();
         this.wetGain = this.audioContext.createGain();
-        this.dryGain.gain.value = 0.85; // Increased dry from 70% to 85%
-        this.wetGain.gain.value = 0.15; // Reduced wet from 30% to 15% (more subtle)
+        this.dryGain.gain.value = 0.85;
+        this.wetGain.gain.value = 0.15;
         
-        // Create filters for fundamental (controlled by lat/lon)
+        // Create filters
         this.lowPassFilter = this.audioContext.createBiquadFilter();
         this.lowPassFilter.type = 'lowpass';
         this.lowPassFilter.frequency.value = 5000;
@@ -92,34 +74,28 @@ class EnvironmentalAudioEngine {
         
         // Master gain
         this.masterGain = this.audioContext.createGain();
-        this.masterGain.gain.value = 1.0; // Max volume (was 0.8)
+        this.masterGain.gain.value = 1.0;
         
-        // Audio chain: oscillators -> gains -> (filters for fund, direct for harmonics) -> dry/wet -> master -> destination
+        // Audio chain
         this.dryGain.connect(this.masterGain);
         this.wetGain.connect(this.convolver);
         this.convolver.connect(this.masterGain);
         this.masterGain.connect(this.audioContext.destination);
         
-        // Create 8 oscillators (1 fundamental + 7 harmonics)
+        // Create 8 main oscillators (no unison for now to debug)
         for (let i = 0; i < 8; i++) {
             const oscillator = this.audioContext.createOscillator();
             const gainNode = this.audioContext.createGain();
             const panner = this.audioContext.createStereoPanner();
             
-            // Initialize panner (will be controlled by compass)
-            panner.pan.value = 0; // Center
-            
-            oscillator.type = this.waveform; // Use selected waveform
+            panner.pan.value = 0;
+            oscillator.type = this.waveform;
             oscillator.frequency.value = 200;
-            
-            // Start at 0 volume (sporadic)
             gainNode.gain.value = 0;
             
-            // Audio chain: oscillator -> gain -> panner -> filters/reverb
             oscillator.connect(gainNode);
             gainNode.connect(panner);
             
-            // Fundamental (osc 0) goes through filters, harmonics bypass filters
             if (i === 0) {
                 panner.connect(this.highPassFilter);
                 this.highPassFilter.connect(this.lowPassFilter);
@@ -137,38 +113,14 @@ class EnvironmentalAudioEngine {
             this.panners.push(panner);
         }
         
-        // Traffic glissando oscillator - DISABLED for testing
-        // (Was creating harsh tone even when supposed to be silent)
-        this.trafficOscillator = null;
-        this.trafficGain = null;
-        
-        /*
-        // Create dedicated traffic glissando oscillator (dissonant element)
-        this.trafficOscillator = this.audioContext.createOscillator();
-        this.trafficGain = this.audioContext.createGain();
-        
-        this.trafficOscillator.type = 'sawtooth'; // Harsh, dissonant waveform
-        this.trafficOscillator.frequency.value = 100; // Starting frequency
-        this.trafficGain.gain.value = 0; // Start silent
-        
-        // Route through reverb for atmosphere
-        this.trafficOscillator.connect(this.trafficGain);
-        this.trafficGain.connect(this.dryGain);
-        this.trafficGain.connect(this.wetGain);
-        
-        this.trafficOscillator.start();
-        */
-        
         this.isRunning = true;
         this.updateFrequencies();
-        
-        // Start sporadic behavior for ALL oscillators
         this.startSporadicOscillators();
     }
     
     createReverbImpulse() {
         const sampleRate = this.audioContext.sampleRate;
-        const length = sampleRate * 1.5; // Increased from 0.875s to 1.5s (more reverb)
+        const length = sampleRate * 1.5;
         const impulse = this.audioContext.createBuffer(2, length, sampleRate);
         
         for (let channel = 0; channel < 2; channel++) {
@@ -183,19 +135,15 @@ class EnvironmentalAudioEngine {
     }
     
     startSporadicOscillators() {
-        // Oscillators 0-3: Fixed timing (not speed-dependent)
-        // Oscillators 4-7: Pulse rate controlled by speed
-        
         for (let i = 0; i < 8; i++) {
             this.scheduleSporadicPulse(i);
         }
     }
     
     setMode(mode) {
-        // Switch between 'drone', 'pulse', and 'click' modes
         this.mode = mode;
+        this.setWaveform(this.waveform);
         
-        // Restart all timers with new timing
         this.sporadicTimers.forEach(timer => clearTimeout(timer));
         this.sporadicTimers = [];
         
@@ -205,208 +153,105 @@ class EnvironmentalAudioEngine {
     }
     
     setWaveform(waveform) {
-        // Switch between waveforms: sine, triangle, sawtooth, roundpm, cello, organ, oboe, tympani
         this.waveform = waveform;
         
-        // Update all oscillator types
         this.oscillators.forEach(osc => {
             if (waveform === 'roundpm') {
-                // Create custom PeriodicWave for rounded pulse-width modulation
-                // Combines fundamental with harmonics to create rounded square-ish wave
                 const real = new Float32Array([0, 0.8, 0, 0.3, 0, 0.15, 0, 0.08, 0, 0.05]);
                 const imag = new Float32Array(real.length);
                 const wave = this.audioContext.createPeriodicWave(real, imag);
                 osc.setPeriodicWave(wave);
             } else if (waveform === 'cello') {
-                // CELLO-LIKE: Rich odd harmonics with emphasized 3rd/5th for bowed string character
-                // Cello has strong fundamental + prominent odd harmonics
-                const real = new Float32Array([
-                    0,      // DC offset
-                    1.0,    // Fundamental (strong)
-                    0.4,    // 2nd harmonic (moderate)
-                    0.7,    // 3rd harmonic (emphasized - cello characteristic)
-                    0.2,    // 4th
-                    0.5,    // 5th harmonic (emphasized)
-                    0.15,   // 6th
-                    0.3,    // 7th (odd harmonic)
-                    0.1,    // 8th
-                    0.2,    // 9th (odd)
-                    0.08,   // 10th
-                    0.15,   // 11th
-                    0.05,   // 12th
-                    0.1     // 13th
-                ]);
+                const real = new Float32Array([0, 1.0, 0.4, 0.7, 0.2, 0.5, 0.15, 0.3, 0.1, 0.2, 0.08, 0.15, 0.05, 0.1]);
                 const imag = new Float32Array(real.length);
                 const wave = this.audioContext.createPeriodicWave(real, imag);
                 osc.setPeriodicWave(wave);
-            } else if (waveform === 'organ') {
-                // PIPE ORGAN: Even harmonic series with 8', 4', 2' stops simulation
-                // Pipe organs emphasize specific harmonic ratios (organ stops)
-                const real = new Float32Array([
-                    0,      // DC offset
-                    1.0,    // 8' fundamental
-                    0.7,    // 2nd (4' stop - octave)
-                    0.3,    // 3rd (mutation)
-                    0.8,    // 4th (2' stop - two octaves)
-                    0.2,    // 5th
-                    0.4,    // 6th
-                    0.15,   // 7th
-                    0.6,    // 8th (1' stop - three octaves)
-                    0.1,    // 9th
-                    0.3,    // 10th
-                    0.08,   // 11th
-                    0.2,    // 12th
-                    0.05,   // 13th
-                    0.15,   // 14th
-                    0.03,   // 15th
-                    0.4     // 16th (mixtures)
-                ]);
+            } else if (effectiveWaveform === 'organ') {
+                const real = new Float32Array([0, 1.0, 0.7, 0.3, 0.8, 0.2, 0.4, 0.15, 0.6, 0.1, 0.3, 0.08, 0.2, 0.05, 0.15, 0.03, 0.4]);
                 const imag = new Float32Array(real.length);
                 const wave = this.audioContext.createPeriodicWave(real, imag);
                 osc.setPeriodicWave(wave);
-            } else if (waveform === 'oboe') {
-                // OBOE: Nasal, reedy double-reed character
-                // Strong odd harmonics (3rd, 5th, 7th) create nasal/reedy timbre
-                // Weak even harmonics, prominent upper partials
-                const real = new Float32Array([
-                    0,      // DC offset
-                    1.0,    // Fundamental
-                    0.2,    // 2nd (weak even)
-                    0.9,    // 3rd (STRONG odd - nasal characteristic)
-                    0.15,   // 4th (weak even)
-                    0.8,    // 5th (STRONG odd - reedy)
-                    0.1,    // 6th
-                    0.7,    // 7th (STRONG odd)
-                    0.08,   // 8th
-                    0.5,    // 9th (strong odd)
-                    0.05,   // 10th
-                    0.4,    // 11th (odd)
-                    0.03,   // 12th
-                    0.3,    // 13th (odd)
-                    0.02,   // 14th
-                    0.2,    // 15th
-                    0.01,   // 16th
-                    0.15,   // 17th (upper partials)
-                    0.01,   // 18th
-                    0.1     // 19th
-                ]);
+            } else if (effectiveWaveform === 'oboe') {
+                const real = new Float32Array([0, 1.0, 0.2, 0.9, 0.15, 0.8, 0.1, 0.7, 0.08, 0.5, 0.05, 0.4, 0.03, 0.3, 0.02, 0.2, 0.01, 0.15, 0.01, 0.1]);
                 const imag = new Float32Array(real.length);
                 const wave = this.audioContext.createPeriodicWave(real, imag);
                 osc.setPeriodicWave(wave);
-            } else if (waveform === 'tympani') {
-                // TYMPANI: Deep resonant kettledrum
-                // Inharmonic partials typical of drums, strong fundamental
-                // Emphasis on fundamental with quickly decaying upper partials
-                const real = new Float32Array([
-                    0,      // DC offset
-                    1.0,    // Fundamental (VERY strong - drum head)
-                    0.3,    // 2nd (moderate)
-                    0.15,   // 3rd (weak - inharmonic)
-                    0.25,   // 4th (moderate resonance)
-                    0.08,   // 5th (weak)
-                    0.12,   // 6th (slight resonance)
-                    0.05,   // 7th (very weak)
-                    0.08,   // 8th (weak resonance)
-                    0.03,   // 9th
-                    0.05,   // 10th
-                    0.02,   // 11th
-                    0.03,   // 12th
-                    0.01,   // 13th
-                    0.02,   // 14th
-                    0.01    // 15th (minimal upper partials)
-                ]);
+            } else if (effectiveWaveform === 'tympani') {
+                const real = new Float32Array([0, 1.0, 0.3, 0.15, 0.25, 0.08, 0.12, 0.05, 0.08, 0.03, 0.05, 0.02, 0.03, 0.01, 0.02, 0.01]);
                 const imag = new Float32Array(real.length);
                 const wave = this.audioContext.createPeriodicWave(real, imag);
                 osc.setPeriodicWave(wave);
             } else {
-                // Standard waveforms
                 osc.type = waveform;
             }
         });
     }
     
     setScale(scale) {
-        // Switch between different tuning systems
         this.scale = scale;
-        
-        // Update frequencies with new scale
         this.updateFrequencies();
     }
     
     scheduleSporadicPulse(oscIndex) {
-        // Speed-dependent timing for oscillators 4-7
-        const isSpeedControlled = oscIndex >= 4;
-        const isSpeedOscillator = oscIndex === 3;
-        
+        const speedNorm = Math.min(this.speed / 35.8, 1);
         let interval, duration, fadeIn, fadeOut;
         
         if (this.mode === 'pulse') {
-            // PULSE MODE: Short, sharp bursts
-            duration = 50 + Math.random() * 250; // 50-300ms
-            fadeIn = (20 + Math.random() * 60) / 1000; // 20-80ms attack
-            fadeOut = (10 + Math.random() * 40) / 1000; // 10-50ms release
+            duration = 50 + Math.random() * 250;
+            fadeIn = (20 + Math.random() * 60) / 1000;
+            fadeOut = (10 + Math.random() * 40) / 1000;
             
-            // ALL oscillators respond to speed for density
-            const speedNorm = Math.min(this.speed / 35.8, 1);
-            if (isSpeedOscillator) {
-                const minInterval = 4000 - (speedNorm * 3500); // 4s to 0.5s
-                const maxInterval = 8000 - (speedNorm * 7000); // 8s to 1s
+            // Much longer intervals for sparse events
+            if (oscIndex === 3) {
+                const minInterval = 12000 - (speedNorm * 8000); // 12s to 4s
+                const maxInterval = 20000 - (speedNorm * 12000); // 20s to 8s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
-                // All other oscillators also speed-controlled for density
-                const minInterval = 2000 - (speedNorm * 1500); // 2s to 0.5s
-                const maxInterval = 4000 - (speedNorm * 3000); // 4s to 1s
+                const minInterval = 8000 - (speedNorm * 5000); // 8s to 3s
+                const maxInterval = 15000 - (speedNorm * 8000); // 15s to 7s
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         } else if (this.mode === 'click') {
-            // CLICK MODE: Ultra-short transients (Ryoji Ikeda style)
-            // Three types: clicks (high freq), thuds (mid), bumps (sub-bass)
-            
             const clickType = Math.random();
-            const speedNorm = Math.min(this.speed / 35.8, 1);
             
             if (clickType < 0.5) {
-                // CLICK: Ultra-short high-frequency transient (1-3ms)
-                duration = 1 + Math.random() * 2; // 1-3ms
-                fadeIn = 0.0001; // Instant attack (0.1ms)
-                fadeOut = 0.0005; // Very quick decay (0.5ms)
+                duration = 1 + Math.random() * 2;
+                fadeIn = 0.0001;
+                fadeOut = 0.0005;
             } else if (clickType < 0.8) {
-                // THUD: Short mid-frequency impact (5-15ms)
-                duration = 5 + Math.random() * 10; // 5-15ms
-                fadeIn = 0.0002; // Nearly instant (0.2ms)
-                fadeOut = 0.003; // Quick decay (3ms)
+                duration = 5 + Math.random() * 10;
+                fadeIn = 0.0002;
+                fadeOut = 0.003;
             } else {
-                // BUMP: Sub-bass pulse (20-50ms)
-                duration = 20 + Math.random() * 30; // 20-50ms
-                fadeIn = 0.001; // Very fast attack (1ms)
-                fadeOut = 0.01; // Short decay (10ms)
+                duration = 20 + Math.random() * 30;
+                fadeIn = 0.001;
+                fadeOut = 0.01;
             }
             
-            // Mathematical timing patterns (Ikeda-style polyrhythms)
-            // Different oscillators have prime number intervals for complex patterns
-            const primeIntervals = [37, 41, 43, 47, 53, 59, 61, 67]; // Prime numbers in ms
-            const baseInterval = primeIntervals[oscIndex] * (10 + speedNorm * 5); // 370-1005ms range
+            // MUCH SPARSER - Ikeda uses silence as compositional element
+            const primeIntervals = [37, 41, 43, 47, 53, 59, 61, 67];
+            const baseInterval = primeIntervals[oscIndex] * (40 + speedNorm * 20); // 1480-4020ms (was 370-1005ms)
             
-            // Add slight randomness for organic feel while maintaining mathematical structure
-            const jitter = (Math.random() - 0.5) * baseInterval * 0.1; // ±10% variation
-            interval = baseInterval + jitter;
+            // Add longer random gaps (up to 10 seconds of silence)
+            const silenceChance = Math.random();
+            const extraSilence = silenceChance > 0.7 ? Math.random() * 10000 : 0; // 30% chance of 0-10s silence
+            
+            const jitter = (Math.random() - 0.5) * baseInterval * 0.1;
+            interval = baseInterval + jitter + extraSilence;
             
         } else {
-            // DRONE MODE: Longer, sustained tones with significant overlap
-            duration = 3000 + Math.random() * 6000; // 3-9 seconds (was 1-6s)
-            fadeIn = 0.5 + Math.random() * 1.0; // 0.5-1.5s (was 0.2-0.7s)
-            fadeOut = 1.0 + Math.random() * 2.0; // 1.0-3.0s (was 0.3-1.3s)
+            // DRONE: Much longer, more space between events
+            duration = 4000 + Math.random() * 8000; // 4-12 seconds (was 3-9s)
+            fadeIn = 1.0 + Math.random() * 2.0; // 1-3s (was 0.5-1.5s)
+            fadeOut = 2.0 + Math.random() * 4.0; // 2-6s (was 1-3s)
             
-            // ALL oscillators respond to speed for density
-            const speedNorm = Math.min(this.speed / 35.8, 1);
-            if (isSpeedOscillator) {
-                const minInterval = 8000 - (speedNorm * 6000); // 8s to 2s (was 5s to 1s)
-                const maxInterval = 12000 - (speedNorm * 8000); // 12s to 4s (was 8s to 2s)
+            if (oscIndex === 3) {
+                const minInterval = 15000 - (speedNorm * 10000); // 15s to 5s (was 8s to 2s)
+                const maxInterval = 25000 - (speedNorm * 15000); // 25s to 10s (was 12s to 4s)
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
-                // All other oscillators also speed-controlled for density
-                const minInterval = 6000 - (speedNorm * 4000); // 6s to 2s (was 3s to 1s)
-                const maxInterval = 10000 - (speedNorm * 6000); // 10s to 4s (was 6s to 2s)
+                const minInterval = 12000 - (speedNorm * 8000); // 12s to 4s (was 6s to 2s)
+                const maxInterval = 20000 - (speedNorm * 12000); // 20s to 8s (was 10s to 4s)
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         }
@@ -414,59 +259,37 @@ class EnvironmentalAudioEngine {
         const timer = setTimeout(() => {
             if (!this.isRunning) return;
             
-            // Fade times already in seconds
-            const fadeInSec = fadeIn;
-            const fadeOutSec = fadeOut;
-            
-            // Volume based on mode
             let targetVolume;
             if (this.mode === 'pulse') {
-                targetVolume = 0.08; // Was 0.035, now 2.3x louder
+                targetVolume = 0.08;
             } else if (this.mode === 'click') {
-                // CLICK MODE: Volume depends on click type (frequency-based)
-                // Use oscillator frequency to determine type
                 const freq = this.oscillators[oscIndex].frequency.value;
-                
                 if (freq > 2000) {
-                    // High-frequency click
-                    targetVolume = 0.25; // Loud, sharp clicks
+                    targetVolume = 0.25;
                 } else if (freq > 200) {
-                    // Mid-frequency thud
-                    targetVolume = 0.35; // Louder impacts
+                    targetVolume = 0.35;
                 } else {
-                    // Sub-bass bump
-                    targetVolume = 0.50; // Very loud sub-bass
+                    targetVolume = 0.50;
                 }
             } else {
-                targetVolume = 0.10; // Drone - was 0.04, now 2.5x louder
+                targetVolume = 0.10;
             }
             
-            // In drone mode, boost lower oscillators for bass presence
             if (this.mode === 'drone' && oscIndex <= 2) {
                 targetVolume *= 1.15;
             }
             
-            // In drone mode, reduce mid-range but keep ultra-highs audible
             if (this.mode === 'drone') {
-                if (oscIndex === 4) {
-                    targetVolume *= 0.5; // Cut mid-range significantly
-                } else if (oscIndex === 5) {
-                    targetVolume *= 0.5; // Reduce high-mid
-                } else if (oscIndex === 6 || oscIndex === 7) {
-                    targetVolume *= 0.6; // Keep ultra-highs more present
-                }
+                if (oscIndex === 4) targetVolume *= 0.5;
+                else if (oscIndex === 5) targetVolume *= 0.5;
+                else if (oscIndex === 6 || oscIndex === 7) targetVolume *= 0.6;
             }
             
-            // NO CLICK SOUND GENERATION - just use the oscillator tones
-            // (Removed the white noise click generation)
-            
-            this.fadeIn(oscIndex, fadeInSec, targetVolume);
+            this.fadeIn(oscIndex, fadeIn, targetVolume);
             
             setTimeout(() => {
                 if (!this.isRunning) return;
-                this.fadeOut(oscIndex, fadeOutSec);
-                
-                // Schedule next pulse
+                this.fadeOut(oscIndex, fadeOut);
                 this.scheduleSporadicPulse(oscIndex);
             }, duration);
         }, interval);
@@ -479,21 +302,11 @@ class EnvironmentalAudioEngine {
         const now = this.audioContext.currentTime;
         const gainNode = this.gainNodes[oscIndex];
         
-        // Add slight irregularity to attack timing for organic feel
-        const irregularity = (Math.random() - 0.5) * 0.02; // ±10ms variation
+        const irregularity = (Math.random() - 0.5) * 0.02;
         const organicDuration = Math.max(0.01, duration + irregularity);
-        
-        // Minimal amplitude flutter (extremely subtle)
-        const flutter = (Math.random() - 0.5) * 0.001; // ±0.1% volume variation
+        const flutter = (Math.random() - 0.5) * 0.001;
         const organicVolume = targetVolume * (1 + flutter);
-        
-        // POPULATION DENSITY AFFECTS ENVELOPE SHAPE
-        // Urban (high density): normal attack, normal decay
-        // Rural (low density): REVERSE - gradual attack, instant cutoff
-        
-        // Scale attack time by population density inversely (REDUCED multiplier)
-        // Rural = slower attack (reverse effect), Urban = normal fast attack
-        const reverseAttackMultiplier = 1 + (1 - this.populationDensity) * 2; // 1x (urban) to 3x (rural) - was 5x
+        const reverseAttackMultiplier = 1 + (1 - this.populationDensity) * 2;
         const finalDuration = organicDuration * reverseAttackMultiplier;
         
         gainNode.gain.cancelScheduledValues(now);
@@ -506,25 +319,16 @@ class EnvironmentalAudioEngine {
         const now = this.audioContext.currentTime;
         const gainNode = this.gainNodes[oscIndex];
         
-        // POPULATION DENSITY AFFECTS ENVELOPE SHAPE
-        // Urban (high density): normal gradual fadeout
-        // Rural (low density): INSTANT CUTOFF (no decay, hard stop)
-        
-        // Rural areas get near-instant cutoff
-        const ruralCutoff = this.populationDensity < 0.3; // Very rural
+        const ruralCutoff = this.populationDensity < 0.3;
         
         if (ruralCutoff) {
-            // INSTANT CUTOFF for rural areas (reverse effect)
             gainNode.gain.cancelScheduledValues(now);
             gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-            gainNode.gain.linearRampToValueAtTime(0, now + 0.001); // 1ms hard stop
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.001);
         } else {
-            // Normal fadeout for urban areas, scaled by density
             const irregularity = (Math.random() - 0.5) * 0.02;
             const organicDuration = Math.max(0.01, duration + irregularity);
-            
-            // Urban = longer fadeout, Rural = shorter
-            const fadeMultiplier = this.populationDensity; // 0.3-1.0
+            const fadeMultiplier = this.populationDensity;
             const finalDuration = organicDuration * fadeMultiplier;
             
             gainNode.gain.cancelScheduledValues(now);
@@ -536,24 +340,17 @@ class EnvironmentalAudioEngine {
     stop() {
         if (!this.isRunning) return;
         
-        // Clear sporadic timers
         this.sporadicTimers.forEach(timer => clearTimeout(timer));
         this.sporadicTimers = [];
         
-        // Stop traffic glissando oscillator
         if (this.trafficOscillator) {
-            try {
-                this.trafficOscillator.stop();
-            } catch (e) {}
+            try { this.trafficOscillator.stop(); } catch (e) {}
             this.trafficOscillator = null;
             this.trafficGain = null;
         }
         
-        // Stop oscillators
         this.oscillators.forEach(osc => {
-            try {
-                osc.stop();
-            } catch (e) {}
+            try { osc.stop(); } catch (e) {}
         });
         
         if (this.audioContext) {
@@ -573,7 +370,7 @@ class EnvironmentalAudioEngine {
         this.isRunning = false;
     }
     
-    setEnvironmentalData(lat, lon, speed, temp, humidity, heading, timeOfDay, populationDensity = 0.5, trafficDensity = 0.0) {
+    setEnvironmentalData(lat, lon, speed, temp, humidity, heading, timeOfDay, populationDensity = 0.5, trafficDensity = 0.0, elevation = 0, rainfall = 0) {
         this.latitude = lat;
         this.longitude = lon;
         this.speed = speed;
@@ -583,20 +380,17 @@ class EnvironmentalAudioEngine {
         this.timeOfDay = timeOfDay;
         this.populationDensity = populationDensity;
         this.trafficDensity = trafficDensity;
+        this.elevation = elevation;
+        this.rainfall = rainfall;
         
         this.updateFrequencies();
     }
     
     calculateSunElevation() {
-        // Simplified sun elevation calculation
-        // Solar noon = 0.5, sunrise/sunset = 0 or 1
-        // This creates a sine wave peaking at noon
-        
-        const hourAngle = (this.timeOfDay - 0.5) * Math.PI * 2; // -π to π
-        const declination = 0; // Simplified (equinox)
+        const hourAngle = (this.timeOfDay - 0.5) * Math.PI * 2;
+        const declination = 0;
         const latRad = this.latitude * Math.PI / 180;
         
-        // Solar elevation angle (simplified)
         const elevation = Math.asin(
             Math.sin(latRad) * Math.sin(declination) +
             Math.cos(latRad) * Math.cos(declination) * Math.cos(hourAngle)
@@ -608,227 +402,159 @@ class EnvironmentalAudioEngine {
     updateFrequencies() {
         if (!this.isRunning) return;
         
-        // Map sun elevation to fundamental frequency
-        // OLD SYSTEM: Used sun elevation
-        // NEW SYSTEM: 24-hour sine wave centered on A440
-        // Noon (12pm) = A440, 6pm = A880 (1 octave up), 6am = A220 (1 octave down), Midnight = A440
+        // COMPLETELY NEW FUNDAMENTAL SYSTEM - NOT LOCKED TO A440
+        // Use multiple environmental factors to determine fundamental
         
-        // timeOfDay is 0.0 to 1.0 (0 = midnight, 0.5 = noon, 1.0 = midnight)
-        // Convert to hours for clarity: 0-24
         const hours = this.timeOfDay * 24;
         
-        // Sine wave: peaks at 18 (6pm), troughs at 6 (6am), crosses reference at 0/12/24
-        // Phase shift so that noon (12) and midnight (0/24) are at reference A440
-        const phaseShift = (hours - 12) / 24 * 2 * Math.PI; // -π to π, centered at noon
+        // Temperature determines base reference (NOT A440)
+        // Cold = lower reference, Hot = higher reference
+        const tempNorm = (this.temperature + 20) / 60; // Normalize -20°C to 40°C range
+        const tempReference = 100 + (tempNorm * 700); // 100Hz (cold) to 800Hz (hot)
         
-        // Sine wave gives us -1 to +1, map to octave range
-        // sin value: -1 at 6am (one octave down), 0 at noon/midnight, +1 at 6pm (one octave up)
-        const octaveDeviation = Math.sin(phaseShift); // -1 to +1
+        // Latitude affects octave range
+        const latNorm = Math.abs(this.latitude) / 90; // 0 at equator, 1 at poles
+        const latOctave = Math.pow(2, latNorm); // 1x at equator, 2x at poles
         
-        // A440 * 2^octaveDeviation gives us the frequency
-        // octaveDeviation = -1 → 220Hz (A220), 0 → 440Hz (A440), +1 → 880Hz (A880)
-        const referenceA = 440;
-        const baseFreq = referenceA * Math.pow(2, octaveDeviation);
+        // Time of day creates sine wave modulation (but not centered on 440)
+        const phaseShift = (hours - 12) / 24 * 2 * Math.PI;
+        const timeModulation = Math.pow(2, Math.sin(phaseShift) * 0.5); // ±half octave
         
-        // Apply mode-specific adjustments while maintaining the A-based fundamental
+        // Population density affects fundamental range
+        // Urban = higher frequencies, Rural = lower frequencies
+        const densityShift = Math.pow(2, this.populationDensity * 0.5); // 1x (rural) to 1.4x (urban)
+        
+        // Combine all factors for base frequency
+        const baseFreq = tempReference * latOctave * timeModulation * densityShift;
+        
         let fundamentalFreq;
         if (this.mode === 'pulse') {
-            // Pulse: much wider range, scale up for variation
-            fundamentalFreq = baseFreq * (Math.random() * 10 + 1); // 440Hz-4840Hz range with variation
+            // Pulse: wide variation around base
+            fundamentalFreq = baseFreq * (0.5 + Math.random() * 2.5); // 0.5x to 3x variation
         } else if (this.mode === 'click') {
-            // Click: very wide frequency range for clicks, thuds, bumps
-            fundamentalFreq = baseFreq * (Math.random() * 20 + 1); // 440Hz-9240Hz extreme range
+            // Click: extreme range
+            fundamentalFreq = baseFreq * (0.25 + Math.random() * 8); // 0.25x to 8.25x variation
         } else {
-            // Drone: keep closer to pure A tuning, slight range for interest
-            fundamentalFreq = baseFreq * (Math.random() * 0.5 + 0.75); // ~330Hz-660Hz from base A440
+            // Drone: moderate variation around base
+            fundamentalFreq = baseFreq * (0.75 + Math.random() * 0.5); // 0.75x to 1.25x variation
         }
         
         this.fundamentalFreq = fundamentalFreq;
         
-        // Temperature drift (hotter = more drift)
-        const tempDrift = (this.temperature - 20) * 0.5; // ±10Hz per 20°C deviation
+        const tempDrift = (this.temperature - 20) * 0.5;
         const randomDrift = (Math.random() - 0.5) * Math.abs(tempDrift);
         
-        // Calculate sun elevation for filter control
         this.sunElevation = this.calculateSunElevation();
         
-        // Use sun elevation to control filters (timbre, not pitch)
-        // Low sun (sunrise/sunset, negative elevation) = Low-pass dominant (dark, muffled)
-        // High sun (noon, positive elevation) = High-pass dominant (bright, thin)
         const elevationNorm = Math.max(-20, Math.min(70, this.sunElevation));
-        const elevationFactor = (elevationNorm + 20) / 90; // 0 to 1 (0 = sunrise, 1 = noon)
+        const elevationFactor = (elevationNorm + 20) / 90;
         
-        // LOW-PASS FILTER: Controlled primarily by sun position
-        // Low sun = aggressive low-pass (500Hz - very dark)
-        // High sun = open low-pass (5000Hz - bright)
         const sunBasedLPF = 500 + elevationFactor * 4500;
         const latNorm = (this.latitude + 90) / 180;
-        const latModulation = latNorm * 1000; // Latitude adds variation ±1000Hz
+        const latModulation = latNorm * 1000;
         this.lowPassFilter.frequency.value = sunBasedLPF + latModulation;
         
-        // HIGH-PASS FILTER: Inverse relationship with sun
-        // Low sun = high HPF cut (200Hz - removes bass, thin sound)
-        // High sun = low HPF cut (50Hz - keeps bass, full sound)
         const sunBasedHPF = 200 - (elevationFactor * 150);
         const lonNorm = (this.longitude + 180) / 360;
-        const lonModulation = lonNorm * 50; // Longitude adds variation ±50Hz
+        const lonModulation = lonNorm * 50;
         this.highPassFilter.frequency.value = sunBasedHPF + lonModulation;
         
-        // Get scale tones based on compass and selected scale
         const compassTones = this.getScaleTones();
+        const useSubharmonics = this.fundamentalFreq > 200;
         
-        // Check if heading has changed significantly (more than 5 degrees)
-        const headingChanged = Math.abs(this.heading - this.lastHeading) > 5;
-        
-        // Determine if we use multipliers (low fund) or divisors (high fund)
-        const useSubharmonics = this.fundamentalFreq > 200; // Lowered from 1000 - more likely to use subharmonics
-        
-        // Set fundamental (oscillator 0) - always the root
         const fund = this.fundamentalFreq + randomDrift;
         this.setOscillatorFrequency(0, fund);
         
-        // Oscillators 1, 2, 4, 5, 6, 7 = 6 chord tones
-        // We'll distribute the chord tones across octaves
         const harmonicIndices = [1, 2, 4, 5, 6, 7];
         
         harmonicIndices.forEach((oscIdx, i) => {
-            // Cycle through scale tones, doubling at octaves
             const tone = compassTones[i % compassTones.length];
             const octaveMultiplier = Math.floor(i / compassTones.length) + 1;
             
             let harmonic;
             if (useSubharmonics) {
-                // High fundamental: use subharmonics (divide)
                 harmonic = fund / (tone * octaveMultiplier);
             } else {
-                // Low fundamental: use harmonics (multiply)
                 harmonic = fund * tone * octaveMultiplier;
             }
             
-            // Mode-specific octave shifts
             if (this.mode === 'pulse') {
-                // Pulse: extreme shifts for wide frequency spread
                 if (oscIdx <= 2) {
-                    harmonic = harmonic * 0.25; // Down two octaves
-                }
-                else if (oscIdx >= 5) {
-                    harmonic = harmonic * 4.0; // Up two octaves
+                    harmonic = harmonic * 0.25;
+                } else if (oscIdx >= 5) {
+                    harmonic = harmonic * 4.0;
                 }
             } else if (this.mode === 'click') {
-                // Click: extreme frequency distribution for varied transient types
                 if (oscIdx <= 2) {
-                    harmonic = harmonic * 0.125; // Down three octaves (sub-bass bumps)
+                    harmonic = harmonic * 0.125;
                 } else if (oscIdx >= 5) {
-                    harmonic = harmonic * 8.0; // Up three octaves (high clicks)
+                    harmonic = harmonic * 8.0;
                 }
             } else {
-                // Drone mode: spread spectrum more - normal bass AND high shimmer
                 if (oscIdx === 1 || oscIdx === 2) {
-                    harmonic = harmonic * 1.0; // Normal pitch (no shift)
+                    harmonic = harmonic * 1.0;
                 } else if (oscIdx === 6 || oscIdx === 7) {
-                    harmonic = harmonic * 8.0; // Ultra high shimmer (3 octaves up)
+                    harmonic = harmonic * 8.0;
                 } else if (oscIdx === 5) {
-                    harmonic = harmonic * 4.0; // High (2 octaves up)
+                    harmonic = harmonic * 4.0;
                 }
             }
             
-            // Update frequency immediately for all oscillators
             this.setOscillatorFrequency(oscIdx, harmonic);
         });
         
-        // Update last heading for next comparison
         this.lastHeading = this.heading;
         
-        // Oscillator 3: Direct speed control (independent of fundamental)
         const speedNorm = Math.min(this.speed / 35.8, 1);
         let speedFreq = 50 + (speedNorm * 950);
         
-        // In pulse/click modes, shift based on speed more extremely
-        if (this.mode === 'pulse' || this.mode === 'click') {
+        if (this.mode === 'pulse' || this.mode === 'click' || this.mode === 'fart') {
             if (speedNorm < 0.5) {
-                speedFreq = speedFreq * 0.25; // Very low for slow speeds
+                speedFreq = speedFreq * 0.25;
             } else {
-                speedFreq = speedFreq * 4.0; // Very high for fast speeds
+                speedFreq = speedFreq * 4.0;
             }
         }
         
         this.setOscillatorFrequency(3, speedFreq);
         
-        // No vibrato - perfectly stable oscillators
+        const humidityNorm = this.humidity / 100;
+        this.dryGain.gain.value = 0.85 - (humidityNorm * 0.30);
+        this.wetGain.gain.value = 0.15 + (humidityNorm * 0.45);
         
-        // Filters now controlled by sun position (see earlier in updateFrequencies)
-        
-        // Update reverb wet/dry based on humidity (increased reverb)
-        const humidityNorm = this.humidity / 100; // 0 to 1
-        this.dryGain.gain.value = 0.85 - (humidityNorm * 0.30); // 0.85 to 0.55 (was 0.95 to 0.7)
-        this.wetGain.gain.value = 0.15 + (humidityNorm * 0.45); // 0.15 to 0.60 (was 0.05 to 0.35)
-        
-        // Update stereo panning based on compass heading
-        // Map heading to pan position, avoiding hard left/right
-        // 0° (North) = center, 90° (East) = right, 180° (South) = center, 270° (West) = left
         const headingRad = (this.heading * Math.PI) / 180;
-        const panPosition = Math.sin(headingRad) * 0.7; // ±0.7 max (avoiding ±1.0)
+        const panPosition = Math.sin(headingRad) * 0.7;
         
-        // Apply panning to all oscillators with slight variations
         this.panners.forEach((panner, i) => {
-            // Population density affects stereo spread (cohesion)
-            // High density (urban) = narrow stereo (individual/distinct tones)
-            // Low density (rural) = wide stereo (cohesive chordal groups)
-            const densitySpread = 1.0 - (this.populationDensity * 0.7); // 1.0 (rural) to 0.3 (urban)
-            
-            // Each oscillator gets offset scaled by population density
-            const baseOffset = (i - 3.5) * 0.05; // -0.175 to +0.175
+            const densitySpread = 1.0 - (this.populationDensity * 0.7);
+            const baseOffset = (i - 3.5) * 0.05;
             const offset = baseOffset * densitySpread;
             const finalPan = Math.max(-0.8, Math.min(0.8, panPosition + offset));
             panner.pan.value = finalPan;
         });
         
-        // TRAFFIC DENSITY → DISSONANT GLISSANDO (currently disabled)
-        if (this.trafficOscillator && this.trafficGain) {
+        // Rainfall tremolo
+        if (this.rainfall > 0) {
             const now = this.audioContext.currentTime;
+            const tremoloRate = 4 + (Math.random() * 2);
+            const rainfallNorm = Math.min(this.rainfall / 10, 1);
+            const tremoloDepth = 0.1 + (rainfallNorm * 0.7);
             
-            if (this.trafficDensity > 0.3) {
-                // Traffic present (only activate at moderate traffic or higher)
-                
-                // Volume based on traffic density (MUCH more subtle)
-                const targetVolume = this.trafficDensity * 0.01; // Very subtle, max 1% volume (was 3%)
-                this.trafficGain.gain.cancelScheduledValues(now);
-                this.trafficGain.gain.setValueAtTime(this.trafficGain.gain.value, now);
-                this.trafficGain.gain.linearRampToValueAtTime(targetVolume, now + 0.5);
-                
-                // Glissando rate based on traffic density
-                // Low traffic = moderate rise (dissonant but bearable)
-                // High traffic = VERY SLOW rise (excruciating dissonance)
-                const riseTime = 8 + (this.trafficDensity * 22); // 8s (low) to 30s (high)
-                
-                // Target frequency: dissonant interval from fundamental
-                // Minor 2nd (semitone) = very dissonant
-                const targetFreq = this.fundamentalFreq * 1.059; // Semitone above fundamental
-                
-                // Start from fundamental and gliss up
-                this.trafficOscillator.frequency.cancelScheduledValues(now);
-                this.trafficOscillator.frequency.setValueAtTime(this.fundamentalFreq, now);
-                this.trafficOscillator.frequency.linearRampToValueAtTime(targetFreq, now + riseTime);
-                
-                // After reaching target, gliss back down and repeat
-                setTimeout(() => {
-                    if (this.isRunning && this.trafficDensity > 0.1) {
-                        const futureNow = this.audioContext.currentTime;
-                        this.trafficOscillator.frequency.cancelScheduledValues(futureNow);
-                        this.trafficOscillator.frequency.setValueAtTime(targetFreq, futureNow);
-                        this.trafficOscillator.frequency.linearRampToValueAtTime(this.fundamentalFreq, futureNow + riseTime);
+            this.gainNodes.forEach((gainNode) => {
+                const currentGain = gainNode.gain.value;
+                if (currentGain > 0) {
+                    gainNode.gain.cancelScheduledValues(now);
+                    gainNode.gain.setValueAtTime(currentGain, now);
+                    
+                    for (let t = 0; t < 2; t += 0.05) {
+                        const phase = t * tremoloRate * Math.PI * 2;
+                        const modulation = 1 - (tremoloDepth * 0.5) + (tremoloDepth * 0.5 * Math.sin(phase));
+                        gainNode.gain.linearRampToValueAtTime(currentGain * modulation, now + t);
                     }
-                }, riseTime * 1000);
-                
-            } else {
-                // Low/no traffic - fade out glissando quickly
-                this.trafficGain.gain.cancelScheduledValues(now);
-                this.trafficGain.gain.setValueAtTime(this.trafficGain.gain.value, now);
-                this.trafficGain.gain.linearRampToValueAtTime(0, now + 1); // Faster fadeout (1s)
-            }
+                }
+            });
         }
         
-        // Notify UI
         if (this.onFrequencyUpdate) {
             const freqs = this.oscillators.map(osc => osc.frequency.value);
             this.onFrequencyUpdate(freqs);
@@ -836,61 +562,31 @@ class EnvironmentalAudioEngine {
     }
     
     getScaleTones() {
-        // Returns 6 tones from the selected scale based on compass heading
         const headingNorm = this.heading % 360;
-        
         let scaleRatios;
         
         switch(this.scale) {
             case 'dreyblatt':
-                // Arnold Dreyblatt's 20-tone scale (harmonics 8-27)
-                scaleRatios = [
-                    1.0, 1.125, 1.25, 1.375, 1.5, 1.625, 1.75, 1.875, 2.0, 2.125,
-                    2.25, 2.375, 2.5, 2.625, 2.75, 2.875, 3.0, 3.125, 3.25, 3.375
-                ];
+                scaleRatios = [1.0, 1.125, 1.25, 1.375, 1.5, 1.625, 1.75, 1.875, 2.0, 2.125, 2.25, 2.375, 2.5, 2.625, 2.75, 2.875, 3.0, 3.125, 3.25, 3.375];
                 break;
-                
             case 'harmonic':
-                // Pure harmonic series (Grisey-style, harmonics 1-20)
-                scaleRatios = [
-                    1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
-                    11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0
-                ];
+                scaleRatios = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0];
                 break;
-                
             case 'slendro':
-                // Indonesian Slendro (5-tone gamelan scale, octave-repeating)
-                const slendroBase = [1.0, 1.2, 1.4, 1.68, 1.87]; // Approximate ratios
-                scaleRatios = [
-                    ...slendroBase,
-                    ...slendroBase.map(r => r * 2),
-                    ...slendroBase.map(r => r * 3),
-                    ...slendroBase.map(r => r * 4)
-                ];
+                const slendroBase = [1.0, 1.2, 1.4, 1.68, 1.87];
+                scaleRatios = [...slendroBase, ...slendroBase.map(r => r * 2), ...slendroBase.map(r => r * 3), ...slendroBase.map(r => r * 4)];
                 break;
-                
             case 'pelog':
-                // Indonesian Pelog (7-tone gamelan scale, unequal intervals)
-                const pelogBase = [1.0, 1.122, 1.26, 1.414, 1.587, 1.682, 1.888]; // Approximate ratios
-                scaleRatios = [
-                    ...pelogBase,
-                    ...pelogBase.map(r => r * 2),
-                    ...pelogBase.map(r => r * 3)
-                ];
+                const pelogBase = [1.0, 1.122, 1.26, 1.414, 1.587, 1.682, 1.888];
+                scaleRatios = [...pelogBase, ...pelogBase.map(r => r * 2), ...pelogBase.map(r => r * 3)];
                 break;
-                
             case 'quartertone':
-                // 24-EDO (quarter-tone system)
-                scaleRatios = Array.from({length: 24}, (_, i) => 
-                    Math.pow(2, i / 24) // 2^(n/24) for equal divisions
-                );
+                scaleRatios = Array.from({length: 24}, (_, i) => Math.pow(2, i / 24));
                 break;
-                
             default:
-                scaleRatios = [1.0, 1.125, 1.25, 1.5, 1.75, 2.0]; // Fallback
+                scaleRatios = [1.0, 1.125, 1.25, 1.5, 1.75, 2.0];
         }
         
-        // Select 6 tones from the scale based on compass heading (same logic as before)
         let selectedTones = [];
         
         if (headingNorm < 90) {
@@ -942,32 +638,18 @@ class EnvironmentalAudioEngine {
         return selectedTones;
     }
     
-    interpolateChords(chord1, chord2, t) {
-        // No longer needed with Dreyblatt scale, but keeping for compatibility
-        const maxLen = Math.max(chord1.length, chord2.length);
-        const c1 = [...chord1];
-        const c2 = [...chord2];
-        
-        while (c1.length < maxLen) c1.push(c1[c1.length - 1] * 2);
-        while (c2.length < maxLen) c2.push(c2[c2.length - 1] * 2);
-        
-        return c1.map((val, i) => val + (c2[i] - val) * t);
-    }
-    
     setOscillatorFrequency(index, frequency) {
         if (!this.oscillators[index]) return;
         
         const now = this.audioContext.currentTime;
         const osc = this.oscillators[index];
-        
-        // No pitch drift - perfectly stable tones
         const organicFreq = frequency;
         
         osc.frequency.cancelScheduledValues(now);
         osc.frequency.setValueAtTime(osc.frequency.value, now);
         osc.frequency.exponentialRampToValueAtTime(
             Math.max(20, Math.min(20000, organicFreq)),
-            now + 2.0  // 2 second smooth glide (was 0.1s which created stepping)
+            now + 2.0
         );
     }
-}
+} 
