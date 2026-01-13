@@ -18,7 +18,6 @@ class EnvironmentalAudioEngine {
         this.fundamentalFreq = 200;
         this.sporadicTimers = [];
         
-        // Environmental parameters
         this.latitude = 0;
         this.longitude = 0;
         this.speed = 0;
@@ -53,17 +52,14 @@ class EnvironmentalAudioEngine {
             }
         }, 100);
         
-        // Create reverb
         this.convolver = this.audioContext.createConvolver();
         this.convolver.buffer = this.createReverbImpulse();
         
-        // Create dry/wet mix
         this.dryGain = this.audioContext.createGain();
         this.wetGain = this.audioContext.createGain();
         this.dryGain.gain.value = 0.85;
         this.wetGain.gain.value = 0.15;
         
-        // Create filters
         this.lowPassFilter = this.audioContext.createBiquadFilter();
         this.lowPassFilter.type = 'lowpass';
         this.lowPassFilter.frequency.value = 5000;
@@ -72,17 +68,14 @@ class EnvironmentalAudioEngine {
         this.highPassFilter.type = 'highpass';
         this.highPassFilter.frequency.value = 100;
         
-        // Master gain
         this.masterGain = this.audioContext.createGain();
         this.masterGain.gain.value = 1.0;
         
-        // Audio chain
         this.dryGain.connect(this.masterGain);
         this.wetGain.connect(this.convolver);
         this.convolver.connect(this.masterGain);
         this.masterGain.connect(this.audioContext.destination);
         
-        // Create 8 main oscillators (no unison for now to debug)
         for (let i = 0; i < 8; i++) {
             const oscillator = this.audioContext.createOscillator();
             const gainNode = this.audioContext.createGain();
@@ -156,28 +149,23 @@ class EnvironmentalAudioEngine {
         this.waveform = waveform;
         
         this.oscillators.forEach(osc => {
-            if (waveform === 'roundpm') {
-                const real = new Float32Array([0, 0.8, 0, 0.3, 0, 0.15, 0, 0.08, 0, 0.05]);
-                const imag = new Float32Array(real.length);
-                const wave = this.audioContext.createPeriodicWave(real, imag);
-                osc.setPeriodicWave(wave);
-            } else if (waveform === 'cello') {
-                const real = new Float32Array([0, 1.0, 0.4, 0.7, 0.2, 0.5, 0.15, 0.3, 0.1, 0.2, 0.08, 0.15, 0.05, 0.1]);
-                const imag = new Float32Array(real.length);
-                const wave = this.audioContext.createPeriodicWave(real, imag);
-                osc.setPeriodicWave(wave);
-            } else if (effectiveWaveform === 'organ') {
+            if (waveform === 'organ') {
                 const real = new Float32Array([0, 1.0, 0.7, 0.3, 0.8, 0.2, 0.4, 0.15, 0.6, 0.1, 0.3, 0.08, 0.2, 0.05, 0.15, 0.03, 0.4]);
                 const imag = new Float32Array(real.length);
                 const wave = this.audioContext.createPeriodicWave(real, imag);
                 osc.setPeriodicWave(wave);
-            } else if (effectiveWaveform === 'oboe') {
-                const real = new Float32Array([0, 1.0, 0.2, 0.9, 0.15, 0.8, 0.1, 0.7, 0.08, 0.5, 0.05, 0.4, 0.03, 0.3, 0.02, 0.2, 0.01, 0.15, 0.01, 0.1]);
+            } else if (waveform === 'square') {
+                const real = new Float32Array([0, 1.0, 0, 0.333, 0, 0.2, 0, 0.143, 0, 0.111, 0, 0.091, 0, 0.077]);
                 const imag = new Float32Array(real.length);
                 const wave = this.audioContext.createPeriodicWave(real, imag);
                 osc.setPeriodicWave(wave);
-            } else if (effectiveWaveform === 'tympani') {
-                const real = new Float32Array([0, 1.0, 0.3, 0.15, 0.25, 0.08, 0.12, 0.05, 0.08, 0.03, 0.05, 0.02, 0.03, 0.01, 0.02, 0.01]);
+            } else if (waveform === 'metallic') {
+                const real = new Float32Array([0, 1.0, 0.4, 0.15, 0.3, 0.08, 0.2, 0.06, 0.15, 0.04, 0.1, 0.03, 0.08]);
+                const imag = new Float32Array(real.length);
+                const wave = this.audioContext.createPeriodicWave(real, imag);
+                osc.setPeriodicWave(wave);
+            } else if (waveform === 'harsh') {
+                const real = new Float32Array([0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.15, 0.1]);
                 const imag = new Float32Array(real.length);
                 const wave = this.audioContext.createPeriodicWave(real, imag);
                 osc.setPeriodicWave(wave);
@@ -201,42 +189,35 @@ class EnvironmentalAudioEngine {
             fadeIn = (20 + Math.random() * 60) / 1000;
             fadeOut = (10 + Math.random() * 40) / 1000;
             
-            // Much longer intervals for sparse events
             if (oscIndex === 3) {
-                const minInterval = 12000 - (speedNorm * 8000); // 12s to 4s
-                const maxInterval = 20000 - (speedNorm * 12000); // 20s to 8s
+                const minInterval = 12000 - (speedNorm * 8000);
+                const maxInterval = 20000 - (speedNorm * 12000);
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
-                const minInterval = 8000 - (speedNorm * 5000); // 8s to 3s
-                const maxInterval = 15000 - (speedNorm * 8000); // 15s to 7s
+                const minInterval = 8000 - (speedNorm * 5000);
+                const maxInterval = 15000 - (speedNorm * 8000);
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         } else if (this.mode === 'click') {
-            // CLICK MODE: Use noise buffers instead of oscillators for Ikeda-style clicks
             const clickType = Math.random();
             
             if (clickType < 0.5) {
-                // HARD CLICK: Very short filtered noise burst
-                duration = 0.5 + Math.random() * 2; // 0.5-2.5ms
+                duration = 0.5 + Math.random() * 2;
                 fadeIn = 0.0001;
                 fadeOut = 0.0001;
             } else if (clickType < 0.8) {
-                // CLIPPED THUD: Short clipped sine burst
-                duration = 3 + Math.random() * 7; // 3-10ms
+                duration = 3 + Math.random() * 7;
                 fadeIn = 0.0001;
                 fadeOut = 0.001;
             } else {
-                // HARD BUMP: Clipped low frequency pulse
-                duration = 10 + Math.random() * 20; // 10-30ms
+                duration = 10 + Math.random() * 20;
                 fadeIn = 0.0001;
                 fadeOut = 0.003;
             }
             
-            // MUCH SPARSER - Ikeda uses silence as compositional element
             const primeIntervals = [37, 41, 43, 47, 53, 59, 61, 67];
-            const baseInterval = primeIntervals[oscIndex] * (40 + speedNorm * 20); // 1480-4020ms
+            const baseInterval = primeIntervals[oscIndex] * (40 + speedNorm * 20);
             
-            // Add longer random gaps (up to 10 seconds of silence)
             const silenceChance = Math.random();
             const extraSilence = silenceChance > 0.7 ? Math.random() * 10000 : 0;
             
@@ -244,18 +225,17 @@ class EnvironmentalAudioEngine {
             interval = baseInterval + jitter + extraSilence;
             
         } else {
-            // DRONE: Much longer, more space between events
-            duration = 4000 + Math.random() * 8000; // 4-12 seconds (was 3-9s)
-            fadeIn = 1.0 + Math.random() * 2.0; // 1-3s (was 0.5-1.5s)
-            fadeOut = 2.0 + Math.random() * 4.0; // 2-6s (was 1-3s)
+            duration = 4000 + Math.random() * 8000;
+            fadeIn = 1.0 + Math.random() * 2.0;
+            fadeOut = 2.0 + Math.random() * 4.0;
             
             if (oscIndex === 3) {
-                const minInterval = 15000 - (speedNorm * 10000); // 15s to 5s (was 8s to 2s)
-                const maxInterval = 25000 - (speedNorm * 15000); // 25s to 10s (was 12s to 4s)
+                const minInterval = 15000 - (speedNorm * 10000);
+                const maxInterval = 25000 - (speedNorm * 15000);
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             } else {
-                const minInterval = 12000 - (speedNorm * 8000); // 12s to 4s (was 6s to 2s)
-                const maxInterval = 20000 - (speedNorm * 12000); // 20s to 8s (was 10s to 4s)
+                const minInterval = 12000 - (speedNorm * 8000);
+                const maxInterval = 20000 - (speedNorm * 12000);
                 interval = minInterval + Math.random() * (maxInterval - minInterval);
             }
         }
@@ -263,7 +243,6 @@ class EnvironmentalAudioEngine {
         const timer = setTimeout(() => {
             if (!this.isRunning) return;
             
-            // CLICK MODE: Generate hard-clipped noise/impulse buffers instead of using oscillators
             if (this.mode === 'click') {
                 const now = this.audioContext.currentTime;
                 const sampleRate = this.audioContext.sampleRate;
@@ -274,48 +253,38 @@ class EnvironmentalAudioEngine {
                 const freq = this.oscillators[oscIndex].frequency.value;
                 
                 if (freq > 2000) {
-                    // HARD CLICK: Filtered white noise, heavily clipped
                     for (let i = 0; i < bufferLength; i++) {
                         const noise = Math.random() * 2 - 1;
-                        // Hard clipping
                         data[i] = Math.max(-0.9, Math.min(0.9, noise * 3));
-                        // Exponential decay
                         data[i] *= Math.exp(-i / (bufferLength * 0.3));
                     }
                 } else if (freq > 200) {
-                    // CLIPPED THUD: Sine wave with hard clipping
                     const cyclesPerSample = freq / sampleRate;
                     for (let i = 0; i < bufferLength; i++) {
                         const sine = Math.sin(2 * Math.PI * cyclesPerSample * i);
-                        // Aggressive hard clipping creates digital distortion
                         data[i] = Math.max(-0.7, Math.min(0.7, sine * 5));
-                        // Quick decay
                         data[i] *= 1 - (i / bufferLength);
                     }
                 } else {
-                    // HARD BUMP: Low frequency pulse with clipping
                     const cyclesPerSample = freq / sampleRate;
                     for (let i = 0; i < bufferLength; i++) {
                         const sine = Math.sin(2 * Math.PI * cyclesPerSample * i);
-                        // Extreme clipping for sub-bass thump
                         data[i] = Math.max(-0.95, Math.min(0.95, sine * 8));
-                        // Slower decay for bass
                         data[i] *= Math.exp(-i / (bufferLength * 0.6));
                     }
                 }
                 
-                // Play the buffer
                 const source = this.audioContext.createBufferSource();
                 const clickGain = this.audioContext.createGain();
                 source.buffer = buffer;
                 
                 let targetVolume;
                 if (freq > 2000) {
-                    targetVolume = 0.35; // Clicks loud
+                    targetVolume = 0.35;
                 } else if (freq > 200) {
-                    targetVolume = 0.45; // Thuds louder
+                    targetVolume = 0.45;
                 } else {
-                    targetVolume = 0.60; // Bumps very loud
+                    targetVolume = 0.60;
                 }
                 
                 clickGain.gain.value = targetVolume;
@@ -326,17 +295,12 @@ class EnvironmentalAudioEngine {
                 
                 source.start(now);
                 
-                // Schedule next click
                 setTimeout(() => {
                     if (!this.isRunning) return;
                     this.scheduleSporadicPulse(oscIndex);
                 }, interval);
                 
             } else {
-                // DRONE and PULSE modes use normal oscillators
-            } else {
-                // DRONE and PULSE modes use normal oscillators
-            
                 let targetVolume;
                 if (this.mode === 'pulse') {
                     targetVolume = 0.08;
@@ -472,41 +436,28 @@ class EnvironmentalAudioEngine {
     updateFrequencies() {
         if (!this.isRunning) return;
         
-        // COMPLETELY NEW FUNDAMENTAL SYSTEM - NOT LOCKED TO A440
-        // Use multiple environmental factors to determine fundamental
-        
         const hours = this.timeOfDay * 24;
         
-        // Temperature determines base reference (NOT A440)
-        // Cold = lower reference, Hot = higher reference
-        const tempNorm = (this.temperature + 20) / 60; // Normalize -20°C to 40°C range
-        const tempReference = 100 + (tempNorm * 700); // 100Hz (cold) to 800Hz (hot)
+        const tempNorm = (this.temperature + 20) / 60;
+        const tempReference = 100 + (tempNorm * 700);
         
-        // Latitude affects octave range
-        const latNorm = Math.abs(this.latitude) / 90; // 0 at equator, 1 at poles
-        const latOctave = Math.pow(2, latNorm); // 1x at equator, 2x at poles
+        const latNorm = Math.abs(this.latitude) / 90;
+        const latOctave = Math.pow(2, latNorm);
         
-        // Time of day creates sine wave modulation (but not centered on 440)
         const phaseShift = (hours - 12) / 24 * 2 * Math.PI;
-        const timeModulation = Math.pow(2, Math.sin(phaseShift) * 0.5); // ±half octave
+        const timeModulation = Math.pow(2, Math.sin(phaseShift) * 0.5);
         
-        // Population density affects fundamental range
-        // Urban = higher frequencies, Rural = lower frequencies
-        const densityShift = Math.pow(2, this.populationDensity * 0.5); // 1x (rural) to 1.4x (urban)
+        const densityShift = Math.pow(2, this.populationDensity * 0.5);
         
-        // Combine all factors for base frequency
         const baseFreq = tempReference * latOctave * timeModulation * densityShift;
         
         let fundamentalFreq;
         if (this.mode === 'pulse') {
-            // Pulse: wide variation around base
-            fundamentalFreq = baseFreq * (0.5 + Math.random() * 2.5); // 0.5x to 3x variation
+            fundamentalFreq = baseFreq * (0.5 + Math.random() * 2.5);
         } else if (this.mode === 'click') {
-            // Click: extreme range
-            fundamentalFreq = baseFreq * (0.25 + Math.random() * 8); // 0.25x to 8.25x variation
+            fundamentalFreq = baseFreq * (0.25 + Math.random() * 8);
         } else {
-            // Drone: moderate variation around base
-            fundamentalFreq = baseFreq * (0.75 + Math.random() * 0.5); // 0.75x to 1.25x variation
+            fundamentalFreq = baseFreq * (0.75 + Math.random() * 0.5);
         }
         
         this.fundamentalFreq = fundamentalFreq;
@@ -520,8 +471,8 @@ class EnvironmentalAudioEngine {
         const elevationFactor = (elevationNorm + 20) / 90;
         
         const sunBasedLPF = 500 + elevationFactor * 4500;
-        const latNorm = (this.latitude + 90) / 180;
-        const latModulation = latNorm * 1000;
+        const latNormFilter = (this.latitude + 90) / 180;
+        const latModulation = latNormFilter * 1000;
         this.lowPassFilter.frequency.value = sunBasedLPF + latModulation;
         
         const sunBasedHPF = 200 - (elevationFactor * 150);
@@ -578,7 +529,7 @@ class EnvironmentalAudioEngine {
         const speedNorm = Math.min(this.speed / 35.8, 1);
         let speedFreq = 50 + (speedNorm * 950);
         
-        if (this.mode === 'pulse' || this.mode === 'click' || this.mode === 'fart') {
+        if (this.mode === 'pulse' || this.mode === 'click') {
             if (speedNorm < 0.5) {
                 speedFreq = speedFreq * 0.25;
             } else {
@@ -603,7 +554,6 @@ class EnvironmentalAudioEngine {
             panner.pan.value = finalPan;
         });
         
-        // Rainfall tremolo
         if (this.rainfall > 0) {
             const now = this.audioContext.currentTime;
             const tremoloRate = 4 + (Math.random() * 2);
@@ -722,4 +672,4 @@ class EnvironmentalAudioEngine {
             now + 2.0
         );
     }
-} 
+}
